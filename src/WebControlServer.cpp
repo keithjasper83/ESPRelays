@@ -11,100 +11,100 @@
 
 namespace
 {
-    WebServer gServer(80);
+  WebServer gServer(80);
 
-    String jsonEscape(const String &input)
+  String jsonEscape(const String &input)
+  {
+    String escaped;
+    escaped.reserve(input.length() + 8);
+
+    for (size_t i = 0; i < input.length(); i++)
     {
-        String escaped;
-        escaped.reserve(input.length() + 8);
-
-        for (size_t i = 0; i < input.length(); i++)
-        {
-            const char c = input[i];
-            if (c == '\\')
-            {
-                escaped += "\\\\";
-            }
-            else if (c == '"')
-            {
-                escaped += "\\\"";
-            }
-            else if (c == '\n')
-            {
-                escaped += "\\n";
-            }
-            else if (c == '\r')
-            {
-                escaped += "\\r";
-            }
-            else
-            {
-                escaped += c;
-            }
-        }
-
-        return escaped;
+      const char c = input[i];
+      if (c == '\\')
+      {
+        escaped += "\\\\";
+      }
+      else if (c == '"')
+      {
+        escaped += "\\\"";
+      }
+      else if (c == '\n')
+      {
+        escaped += "\\n";
+      }
+      else if (c == '\r')
+      {
+        escaped += "\\r";
+      }
+      else
+      {
+        escaped += c;
+      }
     }
 
-    String buildConfigJson(const WebControlContext &context)
-    {
-        String json = "{";
-        json += "\"ok\":true,";
-        json += "\"device_name\":\"";
-        json += jsonEscape(DEVICE_NAME_DEFAULT);
-        json += "\",";
-        json += "\"device_type\":\"";
-        json += jsonEscape(DEVICE_TYPE_DEFAULT);
-        json += "\",";
-        json += "\"firmware\":{\"name\":\"";
-        json += jsonEscape(FIRMWARE_NAME);
-        json += "\",\"version\":\"";
-        json += jsonEscape(FIRMWARE_VERSION);
-        json += "\"},";
-        json += "\"hostname_default\":\"";
-        json += jsonEscape(DEVICE_HOSTNAME_DEFAULT);
-        json += "\",";
-        json += "\"hostname\":\"";
-        json += jsonEscape(context.getHostname != nullptr ? context.getHostname() : String(DEVICE_HOSTNAME_DEFAULT));
-        json += "\",";
-        json += "\"mdns_host\":\"";
-        json += jsonEscape((context.getHostname != nullptr ? context.getHostname() : String(DEVICE_HOSTNAME_DEFAULT)) + String(".local"));
-        json += "\",";
-        json += "\"mqtt_host\":\"";
-        json += jsonEscape(context.mqtt != nullptr ? context.mqtt->serverHost() : String(MQTT_HOST));
-        json += "\",";
-        json += "\"mqtt_port\":";
-        json += context.mqtt != nullptr ? context.mqtt->serverPort() : MQTT_PORT;
-        json += ",";
-        json += "\"wifi_ssid\":\"";
-        json += jsonEscape(context.wifi != nullptr ? context.wifi->ssid() : String(WIFI_SSID));
-        json += "\",";
-        json += "\"wifi_password_set\":";
-        json += context.wifi != nullptr ? (context.wifi->ssid().length() > 0 ? "true" : "false") : "false";
-        json += ",";
-        json += "\"relay_pin\":";
-        json += RELAY_PIN;
-        json += ",";
-        json += "\"relay_led_pin\":";
-        json += RELAY_LED_PIN;
-        json += ",";
-        json += "\"wifi_led_pin\":";
-        json += WIFI_LED_PIN;
-        json += ",";
-        json += "\"relay_button_pin\":";
-        json += RELAY_BUTTON_PIN;
-        json += ",";
-        json += "\"reset_button_pin\":";
-        json += RESET_BUTTON_PIN;
-        json += ",";
-        json += "\"nvs_health\":\"";
-        json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
-        json += "\"";
-        json += "}";
-        return json;
-    }
+    return escaped;
+  }
 
-    const char WEB_UI[] PROGMEM = R"HTML(
+  String buildConfigJson(const WebControlContext &context)
+  {
+    String json = "{";
+    json += "\"ok\":true,";
+    json += "\"device_name\":\"";
+    json += jsonEscape(DEVICE_NAME_DEFAULT);
+    json += "\",";
+    json += "\"device_type\":\"";
+    json += jsonEscape(DEVICE_TYPE_DEFAULT);
+    json += "\",";
+    json += "\"firmware\":{\"name\":\"";
+    json += jsonEscape(FIRMWARE_NAME);
+    json += "\",\"version\":\"";
+    json += jsonEscape(FIRMWARE_VERSION);
+    json += "\"},";
+    json += "\"hostname_default\":\"";
+    json += jsonEscape(DEVICE_HOSTNAME_DEFAULT);
+    json += "\",";
+    json += "\"hostname\":\"";
+    json += jsonEscape(context.getHostname != nullptr ? context.getHostname() : String(DEVICE_HOSTNAME_DEFAULT));
+    json += "\",";
+    json += "\"mdns_host\":\"";
+    json += jsonEscape((context.getHostname != nullptr ? context.getHostname() : String(DEVICE_HOSTNAME_DEFAULT)) + String(".local"));
+    json += "\",";
+    json += "\"mqtt_host\":\"";
+    json += jsonEscape(context.mqtt != nullptr ? context.mqtt->serverHost() : String(MQTT_HOST));
+    json += "\",";
+    json += "\"mqtt_port\":";
+    json += context.mqtt != nullptr ? context.mqtt->serverPort() : MQTT_PORT;
+    json += ",";
+    json += "\"wifi_ssid\":\"";
+    json += jsonEscape(context.wifi != nullptr ? context.wifi->ssid() : String(WIFI_SSID));
+    json += "\",";
+    json += "\"wifi_password_set\":";
+    json += context.wifi != nullptr ? (context.wifi->ssid().length() > 0 ? "true" : "false") : "false";
+    json += ",";
+    json += "\"relay_pin\":";
+    json += RELAY_PIN;
+    json += ",";
+    json += "\"relay_led_pin\":";
+    json += RELAY_LED_PIN;
+    json += ",";
+    json += "\"wifi_led_pin\":";
+    json += WIFI_LED_PIN;
+    json += ",";
+    json += "\"relay_button_pin\":";
+    json += RELAY_BUTTON_PIN;
+    json += ",";
+    json += "\"reset_button_pin\":";
+    json += RESET_BUTTON_PIN;
+    json += ",";
+    json += "\"nvs_health\":\"";
+    json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
+    json += "\"";
+    json += "}";
+    return json;
+  }
+
+  const char WEB_UI[] PROGMEM = R"HTML(
 <!doctype html>
 <html lang="en">
 <head>
@@ -760,309 +760,309 @@ namespace
 
 void WebControlServer::configure(const WebControlContext &newContext)
 {
-    context = newContext;
+  context = newContext;
 }
 
 void WebControlServer::beginIfNeeded(bool wifiConnected)
 {
-    if (started || !wifiConnected)
-    {
-        return;
-    }
+  if (started || !wifiConnected)
+  {
+    return;
+  }
 
-    registerRoutes();
-    gServer.begin();
-    started = true;
+  registerRoutes();
+  gServer.begin();
+  started = true;
 
-    Serial.println("[HTTP] Web control server started on port 80");
+  Serial.println("[HTTP] Web control server started on port 80");
 }
 
 void WebControlServer::handleClient()
 {
-    if (!started)
-    {
-        return;
-    }
+  if (!started)
+  {
+    return;
+  }
 
-    gServer.handleClient();
+  gServer.handleClient();
 }
 
 bool WebControlServer::isStarted() const
 {
-    return started;
+  return started;
 }
 
 void WebControlServer::registerRoutes()
 {
-    gServer.on("/", HTTP_GET, [this]()
-               { handleRoot(); });
-    gServer.on("/on", HTTP_POST, [this]()
-               { handleOn(); });
-    gServer.on("/off", HTTP_POST, [this]()
-               { handleOff(); });
-    gServer.on("/toggle", HTTP_POST, [this]()
-               { handleToggle(); });
-    gServer.on("/status", HTTP_GET, [this]()
-               { handleStatus(); });
-    gServer.on("/config", HTTP_GET, [this]()
-               { handleConfig(); });
-    gServer.on("/config", HTTP_POST, [this]()
-               { handleConfigSave(); });
-    gServer.on("/wifi/scan", HTTP_GET, [this]()
-               { handleWifiScan(); });
-    gServer.on("/hostname", HTTP_POST, [this]()
-               { handleSetHostname(); });
-    gServer.onNotFound([this]()
-                       { handleNotFound(); });
+  gServer.on("/", HTTP_GET, [this]()
+             { handleRoot(); });
+  gServer.on("/on", HTTP_POST, [this]()
+             { handleOn(); });
+  gServer.on("/off", HTTP_POST, [this]()
+             { handleOff(); });
+  gServer.on("/toggle", HTTP_POST, [this]()
+             { handleToggle(); });
+  gServer.on("/status", HTTP_GET, [this]()
+             { handleStatus(); });
+  gServer.on("/config", HTTP_GET, [this]()
+             { handleConfig(); });
+  gServer.on("/config", HTTP_POST, [this]()
+             { handleConfigSave(); });
+  gServer.on("/wifi/scan", HTTP_GET, [this]()
+             { handleWifiScan(); });
+  gServer.on("/hostname", HTTP_POST, [this]()
+             { handleSetHostname(); });
+  gServer.onNotFound([this]()
+                     { handleNotFound(); });
 }
 
 bool WebControlServer::dispatchCommand(const char *command) const
 {
-    if (context.router == nullptr)
-    {
-        return false;
-    }
+  if (context.router == nullptr)
+  {
+    return false;
+  }
 
-    return context.router->dispatch(String(command));
+  return context.router->dispatch(String(command));
 }
 
 const char *WebControlServer::relayStateText() const
 {
-    if (context.relay == nullptr)
-    {
-        return "unknown";
-    }
+  if (context.relay == nullptr)
+  {
+    return "unknown";
+  }
 
-    return context.relay->isOn() ? "on" : "off";
+  return context.relay->isOn() ? "on" : "off";
 }
 
 void WebControlServer::sendError(int statusCode, const char *error)
 {
-    String json = "{\"ok\":false,\"error\":\"";
-    json += error;
-    json += "\"}";
-    gServer.send(statusCode, "application/json", json);
+  String json = "{\"ok\":false,\"error\":\"";
+  json += error;
+  json += "\"}";
+  gServer.send(statusCode, "application/json", json);
 }
 
 void WebControlServer::handleRoot()
 {
-    Serial.println("[HTTP] GET /");
-    gServer.send_P(200, "text/html", WEB_UI);
+  Serial.println("[HTTP] GET /");
+  gServer.send_P(200, "text/html", WEB_UI);
 }
 
 void WebControlServer::handleOn()
 {
-    Serial.println("[HTTP] POST /on");
+  Serial.println("[HTTP] POST /on");
 
-    if (!dispatchCommand("on"))
-    {
-        sendError(500, "Failed to dispatch on command");
-        return;
-    }
+  if (!dispatchCommand("on"))
+  {
+    sendError(500, "Failed to dispatch on command");
+    return;
+  }
 
-    String json = "{\"ok\":true,\"command\":\"on\",\"relay\":\"";
-    json += relayStateText();
-    json += "\"}";
-    gServer.send(200, "application/json", json);
+  String json = "{\"ok\":true,\"command\":\"on\",\"relay\":\"";
+  json += relayStateText();
+  json += "\"}";
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleOff()
 {
-    Serial.println("[HTTP] POST /off");
+  Serial.println("[HTTP] POST /off");
 
-    if (!dispatchCommand("off"))
-    {
-        sendError(500, "Failed to dispatch off command");
-        return;
-    }
+  if (!dispatchCommand("off"))
+  {
+    sendError(500, "Failed to dispatch off command");
+    return;
+  }
 
-    String json = "{\"ok\":true,\"command\":\"off\",\"relay\":\"";
-    json += relayStateText();
-    json += "\"}";
-    gServer.send(200, "application/json", json);
+  String json = "{\"ok\":true,\"command\":\"off\",\"relay\":\"";
+  json += relayStateText();
+  json += "\"}";
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleToggle()
 {
-    Serial.println("[HTTP] POST /toggle");
+  Serial.println("[HTTP] POST /toggle");
 
-    const char *previous = relayStateText();
+  const char *previous = relayStateText();
 
-    if (!dispatchCommand("toggle"))
+  if (!dispatchCommand("toggle"))
+  {
+    const bool wasOn = context.relay != nullptr ? context.relay->isOn() : false;
+    if (!dispatchCommand(wasOn ? "off" : "on"))
     {
-        const bool wasOn = context.relay != nullptr ? context.relay->isOn() : false;
-        if (!dispatchCommand(wasOn ? "off" : "on"))
-        {
-            sendError(500, "Failed to dispatch toggle command");
-            return;
-        }
+      sendError(500, "Failed to dispatch toggle command");
+      return;
     }
+  }
 
-    const char *current = relayStateText();
+  const char *current = relayStateText();
 
-    String json = "{\"ok\":true,\"command\":\"toggle\",\"previous_relay\":\"";
-    json += previous;
-    json += "\",\"relay\":\"";
-    json += current;
-    json += "\"}";
-    gServer.send(200, "application/json", json);
+  String json = "{\"ok\":true,\"command\":\"toggle\",\"previous_relay\":\"";
+  json += previous;
+  json += "\",\"relay\":\"";
+  json += current;
+  json += "\"}";
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleStatus()
 {
-    Serial.println("[HTTP] GET /status");
+  Serial.println("[HTTP] GET /status");
 
-    String json = "{\"ok\":true,\"relay\":\"";
-    json += relayStateText();
-    json += "\",\"hostname\":\"";
-    json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
-    json += "\",\"mqtt_client_id\":\"";
-    json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
-    json += "\",\"uptime_ms\":";
-    json += millis();
-    json += "}";
-    gServer.send(200, "application/json", json);
+  String json = "{\"ok\":true,\"relay\":\"";
+  json += relayStateText();
+  json += "\",\"hostname\":\"";
+  json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
+  json += "\",\"mqtt_client_id\":\"";
+  json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
+  json += "\",\"uptime_ms\":";
+  json += millis();
+  json += "}";
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleConfig()
 {
-    Serial.println("[HTTP] GET /config");
-    gServer.send(200, "application/json", buildConfigJson(context));
+  Serial.println("[HTTP] GET /config");
+  gServer.send(200, "application/json", buildConfigJson(context));
 }
 
 void WebControlServer::handleConfigSave()
 {
-    Serial.println("[HTTP] POST /config");
+  Serial.println("[HTTP] POST /config");
 
-    bool wifiChanged = false;
+  bool wifiChanged = false;
   bool settingsSaved = false;
 
-    if (context.wifi != nullptr)
+  if (context.wifi != nullptr)
+  {
+    const String wifiSsid = gServer.arg("wifi_ssid");
+    const String wifiPass = gServer.arg("wifi_pass");
+    if (wifiSsid.length() > 0)
     {
-        const String wifiSsid = gServer.arg("wifi_ssid");
-        const String wifiPass = gServer.arg("wifi_pass");
-        if (wifiSsid.length() > 0)
-        {
-            context.wifi->setCredentials(wifiSsid, wifiPass);
-            wifiChanged = true;
+      context.wifi->setCredentials(wifiSsid, wifiPass);
+      wifiChanged = true;
       settingsSaved = true;
-        }
     }
+  }
 
-    if (context.mqtt != nullptr)
+  if (context.mqtt != nullptr)
+  {
+    const String mqttHost = gServer.arg("mqtt_host");
+    const String mqttPortText = gServer.arg("mqtt_port");
+    if (mqttHost.length() > 0 || mqttPortText.length() > 0)
     {
-        const String mqttHost = gServer.arg("mqtt_host");
-        const String mqttPortText = gServer.arg("mqtt_port");
-        if (mqttHost.length() > 0 || mqttPortText.length() > 0)
-        {
-            const String currentHost = context.mqtt->serverHost();
-            const int currentPort = context.mqtt->serverPort();
-            const String nextHost = mqttHost.length() > 0 ? mqttHost : currentHost;
-            int nextPort = currentPort;
-            if (mqttPortText.length() > 0)
-            {
-                nextPort = mqttPortText.toInt();
-            }
-            if (nextPort <= 0)
-            {
-                nextPort = MQTT_PORT;
-            }
-            context.mqtt->setServer(nextHost, nextPort);
-            settingsSaved = true;
-        }
-    }
-
-    const String requestedHostname = gServer.arg("hostname");
-    if (requestedHostname.length() > 0)
-    {
-        if (context.setHostname == nullptr)
-        {
-            sendError(500, "Hostname setter is not available");
-            return;
-        }
-
-        String error;
-        if (!context.setHostname(requestedHostname, error))
-        {
-            sendError(400, error.length() > 0 ? error.c_str() : "Invalid hostname");
-            return;
-        }
-
-        settingsSaved = true;
-    }
-
-    if (wifiChanged && requestedHostname.length() == 0 && context.wifi != nullptr)
-    {
-        context.wifi->forceReconnect();
-    }
-
-      if (!settingsSaved)
+      const String currentHost = context.mqtt->serverHost();
+      const int currentPort = context.mqtt->serverPort();
+      const String nextHost = mqttHost.length() > 0 ? mqttHost : currentHost;
+      int nextPort = currentPort;
+      if (mqttPortText.length() > 0)
       {
-        gServer.send(200, "application/json", buildConfigJson(context));
-        return;
+        nextPort = mqttPortText.toInt();
       }
-
-      String json = buildConfigJson(context);
-      if (json.endsWith("}"))
+      if (nextPort <= 0)
       {
-        json.remove(json.length() - 1);
-        json += ",\"restarting\":true}";
+        nextPort = MQTT_PORT;
       }
+      context.mqtt->setServer(nextHost, nextPort);
+      settingsSaved = true;
+    }
+  }
 
-      gServer.send(200, "application/json", json);
-      delay(150);
-      ESP.restart();
+  const String requestedHostname = gServer.arg("hostname");
+  if (requestedHostname.length() > 0)
+  {
+    if (context.setHostname == nullptr)
+    {
+      sendError(500, "Hostname setter is not available");
+      return;
+    }
+
+    String error;
+    if (!context.setHostname(requestedHostname, error))
+    {
+      sendError(400, error.length() > 0 ? error.c_str() : "Invalid hostname");
+      return;
+    }
+
+    settingsSaved = true;
+  }
+
+  if (wifiChanged && requestedHostname.length() == 0 && context.wifi != nullptr)
+  {
+    context.wifi->forceReconnect();
+  }
+
+  if (!settingsSaved)
+  {
+    gServer.send(200, "application/json", buildConfigJson(context));
+    return;
+  }
+
+  String json = buildConfigJson(context);
+  if (json.endsWith("}"))
+  {
+    json.remove(json.length() - 1);
+    json += ",\"restarting\":true}";
+  }
+
+  gServer.send(200, "application/json", json);
+  delay(150);
+  ESP.restart();
 }
 
 void WebControlServer::handleWifiScan()
 {
-    Serial.println("[HTTP] GET /wifi/scan");
+  Serial.println("[HTTP] GET /wifi/scan");
 
-    if (context.wifi == nullptr)
-    {
-        sendError(500, "Wi-Fi manager is not available");
-        return;
-    }
+  if (context.wifi == nullptr)
+  {
+    sendError(500, "Wi-Fi manager is not available");
+    return;
+  }
 
-    gServer.send(200, "application/json", context.wifi->scanWifiJson());
+  gServer.send(200, "application/json", context.wifi->scanWifiJson());
 }
 
 void WebControlServer::handleSetHostname()
 {
-    Serial.println("[HTTP] POST /hostname");
+  Serial.println("[HTTP] POST /hostname");
 
-    if (context.setHostname == nullptr)
-    {
-        sendError(500, "Hostname setter is not available");
-        return;
-    }
+  if (context.setHostname == nullptr)
+  {
+    sendError(500, "Hostname setter is not available");
+    return;
+  }
 
-    const String requested = gServer.arg("name");
-    if (requested.length() == 0)
-    {
-        sendError(400, "Missing name parameter");
-        return;
-    }
+  const String requested = gServer.arg("name");
+  if (requested.length() == 0)
+  {
+    sendError(400, "Missing name parameter");
+    return;
+  }
 
-    String error;
-    if (!context.setHostname(requested, error))
-    {
-        sendError(400, error.length() > 0 ? error.c_str() : "Invalid hostname");
-        return;
-    }
+  String error;
+  if (!context.setHostname(requested, error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Invalid hostname");
+    return;
+  }
 
-    String json = "{\"ok\":true,\"command\":\"hostname\",\"hostname\":\"";
-    json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
-    json += "\",\"mqtt_client_id\":\"";
-    json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
-    json += "\"}";
-    gServer.send(200, "application/json", json);
+  String json = "{\"ok\":true,\"command\":\"hostname\",\"hostname\":\"";
+  json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
+  json += "\",\"mqtt_client_id\":\"";
+  json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
+  json += "\"}";
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleNotFound()
 {
-    Serial.print("[HTTP] ");
-    Serial.print(gServer.method() == HTTP_POST ? "POST " : "GET ");
-    Serial.println(gServer.uri());
-    sendError(404, "Not found");
+  Serial.print("[HTTP] ");
+  Serial.print(gServer.method() == HTTP_POST ? "POST " : "GET ");
+  Serial.println(gServer.uri());
+  sendError(404, "Not found");
 }
