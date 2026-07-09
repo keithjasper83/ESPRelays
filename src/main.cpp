@@ -10,7 +10,10 @@
 #include "DeviceCommands.h"
 #include "IndicatorLeds.h"
 #include "MqttManager.h"
+#include "OtaUpdateManager.h"
 #include "RelayController.h"
+#include "ScheduleManager.h"
+#include "TimeSyncManager.h"
 #include "WebControlServer.h"
 #include "WiFiManager.h"
 #include "discovery/udp_discovery.h"
@@ -26,6 +29,9 @@ CommandRouter commandRouter;
 DeviceCommandContext commandContext;
 WebControlServer webControlServer;
 UdpDiscovery udpDiscovery;
+TimeSyncManager timeSyncManager;
+ScheduleManager scheduleManager;
+OtaUpdateManager otaUpdateManager;
 
 unsigned long lastHeartbeat = 0;
 unsigned long bootTime = 0;
@@ -65,6 +71,7 @@ String getDiscoveryFirmwareVersion();
 String getDiscoveryStateJson();
 String getDiscoveryCapabilitiesJson();
 String getDiscoveryModel();
+bool dispatchScheduledCommand(const String &command);
 
 String sanitizeHostname(const String &requested)
 {
@@ -402,6 +409,26 @@ void handleSerial()
     }
 }
 
+bool dispatchScheduledCommand(const String &command)
+{
+    String normalized = command;
+    normalized.trim();
+    normalized.toLowerCase();
+
+    if (normalized.length() == 0)
+    {
+        return false;
+    }
+
+    if (debugLogging)
+    {
+        Serial.print("Scheduled command received: ");
+        Serial.println(normalized);
+    }
+
+    return commandRouter.dispatch(normalized);
+}
+
 void heartbeat()
 {
     if (!debugLogging)
@@ -457,6 +484,7 @@ void setup()
 
     commandContext.relay = &relayController;
     commandContext.wifi = &wifiManager;
+    commandContext.ota = &otaUpdateManager;
     commandContext.printStatus = printStatus;
 
     DeviceCommands::begin(commandRouter, commandContext);
@@ -466,6 +494,9 @@ void setup()
     webContext.relay = &relayController;
     webContext.wifi = &wifiManager;
     webContext.mqtt = &mqttManager;
+    webContext.timeSync = &timeSyncManager;
+    webContext.schedule = &scheduleManager;
+    webContext.ota = &otaUpdateManager;
     webContext.getHostname = getDeviceHostname;
     webContext.setHostname = updateDeviceHostname;
     webContext.getMqttClientId = getMqttClientId;
@@ -486,6 +517,10 @@ void setup()
     mqttManager.begin();
     mqttManager.setClientId(deviceHostname);
     mqttManager.setCommandHandler(handleCommand);
+
+    timeSyncManager.begin();
+    scheduleManager.begin();
+    otaUpdateManager.begin();
 
     DiscoveryConfig discoveryConfig;
     discoveryConfig.multicastGroup = "239.255.42.99";
@@ -514,6 +549,8 @@ void loop()
     handleSerial();
     buttonManager.update(millis());
     wifiManager.maintain();
+    timeSyncManager.maintain(wifiManager.isConnected());
+    scheduleManager.maintain(timeSyncManager.isTimeValid(), dispatchScheduledCommand);
     maintainMdns();
     webControlServer.beginIfNeeded(wifiManager.isConnected());
     webControlServer.handleClient();

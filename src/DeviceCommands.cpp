@@ -1,6 +1,7 @@
 #include "DeviceCommands.h"
 
 #include "CommandRouter.h"
+#include "OtaUpdateManager.h"
 #include "RelayController.h"
 #include "WiFiManager.h"
 
@@ -14,6 +15,8 @@ namespace
     const char *const TOGGLE_ALIASES[] = {"t"};
     const char *const STATE_ALIASES[] = {"status", "?"};
     const char *const HELP_ALIASES[] = {"h", "commands"};
+    const char *const OTA_CHECK_ALIASES[] = {"check-update", "update-check"};
+    const char *const OTA_UPDATE_ALIASES[] = {"update", "fwupdate"};
 
     void handleOn(const String &command)
     {
@@ -68,6 +71,53 @@ namespace
             gRouter->printHelp(Serial);
         }
     }
+
+    void handleOtaCheck(const String &command)
+    {
+        (void)command;
+        if (gContext == nullptr || gContext->ota == nullptr)
+        {
+            Serial.println("OTA manager is unavailable.");
+            return;
+        }
+
+        const OtaCheckResult result = gContext->ota->checkForUpdate();
+        Serial.print("OTA check: ");
+        Serial.println(result.ok ? "ok" : "failed");
+        Serial.print("Current version: ");
+        Serial.println(result.currentVersion);
+        if (result.latestVersion.length() > 0)
+        {
+            Serial.print("Latest version: ");
+            Serial.println(result.latestVersion);
+        }
+        Serial.print("Update available: ");
+        Serial.println(result.updateAvailable ? "yes" : "no");
+        Serial.print("Message: ");
+        Serial.println(result.message);
+    }
+
+    void handleOtaUpdate(const String &command)
+    {
+        (void)command;
+        if (gContext == nullptr || gContext->ota == nullptr)
+        {
+            Serial.println("OTA manager is unavailable.");
+            return;
+        }
+
+        String message;
+        if (!gContext->ota->performUpdate(message))
+        {
+            Serial.print("OTA update failed: ");
+            Serial.println(message);
+            return;
+        }
+
+        Serial.println("OTA update installed. Rebooting...");
+        delay(150);
+        ESP.restart();
+    }
 }
 
 void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
@@ -82,5 +132,7 @@ void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
     router.registerCommand({"wifi", nullptr, 0, "print full Wi-Fi details", handleWifi});
     router.registerCommand({"scan", nullptr, 0, "scan and print nearby Wi-Fi networks", handleScan});
     router.registerCommand({"reconnect", nullptr, 0, "force a Wi-Fi reconnect", handleReconnect});
+    router.registerCommand({"ota-check", OTA_CHECK_ALIASES, sizeof(OTA_CHECK_ALIASES) / sizeof(OTA_CHECK_ALIASES[0]), "check for a newer OTA release", handleOtaCheck});
+    router.registerCommand({"ota-update", OTA_UPDATE_ALIASES, sizeof(OTA_UPDATE_ALIASES) / sizeof(OTA_UPDATE_ALIASES[0]), "download and install latest OTA release", handleOtaUpdate});
     router.registerCommand({"help", HELP_ALIASES, sizeof(HELP_ALIASES) / sizeof(HELP_ALIASES[0]), "list available commands", handleHelp});
 }

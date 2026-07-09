@@ -26,8 +26,20 @@ constexpr char DEVICE_TYPE_DEFAULT[] = "relay";
 constexpr char FIRMWARE_NAME[] = "esp-relay-controller";
 constexpr char FIRMWARE_VERSION[] = "1.0.0";
 
-constexpr char MQTT_HOST[] = "192.168.0.10";
+constexpr char MQTT_HOST[] = "192.168.0.50";
 constexpr int MQTT_PORT = 1883;
+
+constexpr char TIME_SERVER_DEFAULT[] = "pool.ntp.org";
+constexpr char TIME_SERVER_FALLBACK_1[] = "time.google.com";
+constexpr char TIME_SERVER_FALLBACK_2[] = "time.cloudflare.com";
+constexpr char TIME_TZ_DEFAULT[] = "GMT0BST,M3.5.0/1,M10.5.0/2";
+constexpr uint32_t TIME_SYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
+constexpr uint32_t TIME_SYNC_RETRY_MS = 60UL * 1000UL;
+
+constexpr uint8_t SCHEDULE_MAX_EVENTS = 10;
+
+constexpr char OTA_RELEASE_INFO_URL[] = "https://api.github.com/repos/OWNER/REPO/releases/latest";
+constexpr char OTA_FIRMWARE_ASSET_NAME[] = "firmware-esp32-c3-devkitm-1.bin";
 
 constexpr char TOPIC_CMD[] = "home/relay/command";
 constexpr char TOPIC_STATE[] = "home/relay/state";

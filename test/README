@@ -1,11 +1,24 @@
+This directory contains automated tests for CI and optional hardware smoke checks.
 
-This directory is intended for PlatformIO Test Runner and project tests.
+Automated host tests (used in GitHub CI):
+1. Run firmware compile check:
+	pio run
+2. Run host unit and contract tests:
+	pio test -e native
 
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
+Coverage gate:
+1. Host tests are built with coverage instrumentation.
+2. CI enforces minimum line coverage on command routing modules.
 
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+Current host test suites:
+1. test_defaults: default constants and range checks from src/AppConfig.h.
+2. test_command_router: command registration, alias, and dispatch behavior.
+3. test_command_parity: command parity across terminal/router, web mappings, and MQTT handler path.
+4. test_http_contracts: required GET/POST routes and form field handling contracts.
+
+Optional hardware smoke checks (manual, non-blocking):
+1. Flash firmware and open serial monitor.
+2. Issue serial commands: on, off, toggle, state, ota-check.
+3. Call web POST endpoints: /on, /off, /toggle, /config, /time/config, /schedule/add.
+4. Publish MQTT commands to both dynamic and legacy command topics.
+5. Verify relay state and telemetry updates in web/MQTT output.

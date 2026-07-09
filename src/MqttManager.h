@@ -17,6 +17,8 @@ public:
     void maintain(bool wifiConnected, bool relayOn);
     void publishRelayState(bool relayOn);
     void publishStatusAndTemperature(bool relayOn);
+    void setEnabled(bool enabled);
+    bool isEnabled() const;
     void setCommandHandler(CommandHandler handler);
     void setClientId(const String &clientId);
     void setServer(const String &host, int port);
@@ -50,6 +52,7 @@ private:
     unsigned long lastTelemetryPublish = 0;
     bool settingsLoaded = false;
     bool nvsReadyFlag = false;
+    bool mqttEnabled = true;
 
     void loadSettings();
 };

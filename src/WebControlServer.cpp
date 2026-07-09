@@ -6,7 +6,10 @@
 #include "AppConfig.h"
 #include "CommandRouter.h"
 #include "MqttManager.h"
+#include "OtaUpdateManager.h"
 #include "RelayController.h"
+#include "ScheduleManager.h"
+#include "TimeSyncManager.h"
 #include "WiFiManager.h"
 
 namespace
@@ -76,6 +79,36 @@ namespace
     json += "\"mqtt_port\":";
     json += context.mqtt != nullptr ? context.mqtt->serverPort() : MQTT_PORT;
     json += ",";
+    json += "\"mqtt_enabled\":";
+    json += context.mqtt != nullptr ? (context.mqtt->isEnabled() ? "true" : "false") : "true";
+    json += ",";
+    json += "\"time_enabled\":";
+    json += context.timeSync != nullptr ? (context.timeSync->isEnabled() ? "true" : "false") : "true";
+    json += ",";
+    json += "\"time_server\":\"";
+    json += jsonEscape(context.timeSync != nullptr ? context.timeSync->server() : String(TIME_SERVER_DEFAULT));
+    json += "\",";
+    json += "\"time_timezone\":\"";
+    json += jsonEscape(context.timeSync != nullptr ? context.timeSync->timezone() : String(TIME_TZ_DEFAULT));
+    json += "\",";
+    json += "\"time_valid\":";
+    json += context.timeSync != nullptr ? (context.timeSync->isTimeValid() ? "true" : "false") : "false";
+    json += ",";
+    json += "\"schedule_count\":";
+    json += context.schedule != nullptr ? context.schedule->count() : 0;
+    json += ",";
+    json += "\"schedule_capacity\":";
+    json += context.schedule != nullptr ? context.schedule->capacity() : SCHEDULE_MAX_EVENTS;
+    json += ",";
+    json += "\"ota_configured\":";
+    json += context.ota != nullptr ? (context.ota->isConfigured() ? "true" : "false") : "false";
+    json += ",";
+    json += "\"ota_release_info_url\":\"";
+    json += jsonEscape(OTA_RELEASE_INFO_URL);
+    json += "\",";
+    json += "\"ota_asset_name\":\"";
+    json += jsonEscape(OTA_FIRMWARE_ASSET_NAME);
+    json += "\",";
     json += "\"wifi_ssid\":\"";
     json += jsonEscape(context.wifi != nullptr ? context.wifi->ssid() : String(WIFI_SSID));
     json += "\",";
@@ -102,6 +135,63 @@ namespace
     json += "\"";
     json += "}";
     return json;
+  }
+
+  bool parseBoolArg(const String &value)
+  {
+    String normalized = value;
+    normalized.trim();
+    normalized.toLowerCase();
+    return normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on";
+  }
+
+  bool parseHourMinute(const String &value, uint8_t &hour, uint8_t &minute)
+  {
+    const int sep = value.indexOf(':');
+    if (sep <= 0 || sep >= value.length() - 1)
+    {
+      return false;
+    }
+
+    const int parsedHour = value.substring(0, sep).toInt();
+    const int parsedMinute = value.substring(sep + 1).toInt();
+    if (parsedHour < 0 || parsedHour > 23 || parsedMinute < 0 || parsedMinute > 59)
+    {
+      return false;
+    }
+
+    hour = static_cast<uint8_t>(parsedHour);
+    minute = static_cast<uint8_t>(parsedMinute);
+    return true;
+  }
+
+  bool parseDateYmd(const String &value, uint16_t &year, uint8_t &month, uint8_t &day)
+  {
+    const int first = value.indexOf('-');
+    if (first <= 0)
+    {
+      return false;
+    }
+
+    const int second = value.indexOf('-', first + 1);
+    if (second <= first || second >= value.length() - 1)
+    {
+      return false;
+    }
+
+    const int parsedYear = value.substring(0, first).toInt();
+    const int parsedMonth = value.substring(first + 1, second).toInt();
+    const int parsedDay = value.substring(second + 1).toInt();
+
+    if (parsedYear < 2020 || parsedYear > 2099 || parsedMonth < 1 || parsedMonth > 12 || parsedDay < 1 || parsedDay > 31)
+    {
+      return false;
+    }
+
+    year = static_cast<uint16_t>(parsedYear);
+    month = static_cast<uint8_t>(parsedMonth);
+    day = static_cast<uint8_t>(parsedDay);
+    return true;
   }
 
   const char WEB_UI[] PROGMEM = R"HTML(
@@ -435,7 +525,7 @@ namespace
             <small>Broker address or hostname.</small>
           </div>
           <div class="settingsValue">
-            <input id="mqttHostInput" type="text" placeholder="192.168.0.10" />
+            <input id="mqttHostInput" type="text" placeholder="192.168.0.50" />
           </div>
         </div>
         <div class="settingsRow">
@@ -445,6 +535,15 @@ namespace
           </div>
           <div class="settingsValue">
             <input id="mqttPortInput" type="text" placeholder="1883" inputmode="numeric" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Disable MQTT</span>
+            <small>Stops all MQTT connect, subscribe, and publish activity.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="mqttDisabledInput" type="checkbox" />
           </div>
         </div>
         <div class="settingsRow">
@@ -480,6 +579,8 @@ namespace
       <div class="kv"><strong>mDNS host:</strong> <span id="mdnsHost">n/a</span></div>
       <div class="kv"><strong>MQTT Host:</strong> <span id="mqttHost">n/a</span></div>
       <div class="kv"><strong>MQTT Port:</strong> <span id="mqttPort">n/a</span></div>
+      <div class="kv"><strong>MQTT Enabled:</strong> <span id="mqttEnabled">n/a</span></div>
+      <div class="kv"><strong>OTA Configured:</strong> <span id="otaConfigured">n/a</span></div>
       <div class="kv"><strong>Relay pin:</strong> <span id="relayPin">n/a</span></div>
       <div class="kv"><strong>Relay LED pin:</strong> <span id="relayLedPin">n/a</span></div>
       <div class="kv"><strong>Wi-Fi LED pin:</strong> <span id="wifiLedPin">n/a</span></div>
@@ -490,11 +591,125 @@ namespace
     </div>
 
     <div class="card">
+      <div class="sectionTitle">Firmware Update (OTA)</div>
+      <p class="muted">Manual update only. Check for a release first, then install when ready.</p>
+      <div class="row">
+        <button id="btnOtaCheck" class="refresh">CHECK FOR UPDATE</button>
+        <button id="btnOtaUpdate" class="save">INSTALL UPDATE</button>
+      </div>
+      <div class="kv" style="margin-top:10px"><strong>Current Version:</strong> <span id="otaCurrentVersion">n/a</span></div>
+      <div class="kv"><strong>Latest Version:</strong> <span id="otaLatestVersion">n/a</span></div>
+      <div class="kv"><strong>Update Available:</strong> <span id="otaUpdateAvailable">n/a</span></div>
+      <div class="kv"><strong>Status:</strong> <span id="otaStatus">No OTA check yet</span></div>
+    </div>
+
+    <div class="card">
       <div class="sectionTitle">Wi-Fi</div>
       <div class="row">
         <button id="btnScanWifi" class="refresh">SCAN WI-FI</button>
       </div>
       <ul id="wifiList" class="list"></ul>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">Time & Schedules</div>
+      <div class="settingsGroup">
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Enable Time Sync</span>
+            <small>Uses public or local NTP servers for clock sync.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="timeEnabledInput" type="checkbox" checked />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Time Server</span>
+            <small>Local NTP server hostname or IP.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="timeServerInput" type="text" placeholder="pool.ntp.org" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Timezone Rule</span>
+            <small>POSIX TZ rule used for local schedule evaluation.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="timeTimezoneInput" type="text" placeholder="GMT0BST,M3.5.0/1,M10.5.0/2" />
+          </div>
+        </div>
+        <div class="settingsRow settingsRow--action">
+          <div class="row">
+            <button id="btnSaveTimeConfig" class="save">SAVE TIME SETTINGS</button>
+            <button id="btnTimeSyncNow" class="refresh">SYNC NOW</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="kv" style="margin-top:10px"><strong>Time Valid:</strong> <span id="timeValid">n/a</span></div>
+      <div class="kv"><strong>Last Sync Status:</strong> <span id="timeSyncStatus">n/a</span></div>
+      <div class="kv"><strong>Last Sync Epoch:</strong> <span id="timeSyncEpoch">n/a</span></div>
+      <div class="kv"><strong>Schedule Slots:</strong> <span id="scheduleSlots">0/10</span></div>
+
+      <div class="settingsGroup stackSection">
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Command</span>
+            <small>Existing command router keyword (on/off/toggle).</small>
+          </div>
+          <div class="settingsValue">
+            <input id="eventCommandInput" type="text" placeholder="on" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Time</span>
+            <small>24h time HH:MM.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="eventTimeInput" type="text" placeholder="06:30" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Recurring</span>
+            <small>Checked = recurring, unchecked = one-time date event.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="eventRecurringInput" type="checkbox" checked />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Day Mask</span>
+            <small>Recurring bitmask 0-127 (Mon=1, Tue=2 ... Sun=64).</small>
+          </div>
+          <div class="settingsValue">
+            <input id="eventDowMaskInput" type="text" placeholder="127" inputmode="numeric" pattern="^(0|[1-9][0-9]?)$|^1[01][0-9]$|^12[0-7]$" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Date</span>
+            <small>One-time only date YYYY-MM-DD.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="eventDateInput" type="text" placeholder="2026-12-31" />
+          </div>
+        </div>
+        <div class="settingsRow settingsRow--action">
+          <input id="eventIdInput" type="hidden" />
+          <div class="row">
+            <button id="btnScheduleSave" class="save">ADD / UPDATE EVENT</button>
+            <button id="btnScheduleReset" class="refresh">RESET FORM</button>
+          </div>
+        </div>
+      </div>
+
+      <ul id="scheduleList" class="list"></ul>
     </div>
 
     <div class="card">
@@ -525,6 +740,21 @@ namespace
       relayStateBadgeText: document.getElementById('relayStateBadgeText'),
       mqttHostInput: document.getElementById('mqttHostInput'),
       mqttPortInput: document.getElementById('mqttPortInput'),
+      mqttDisabledInput: document.getElementById('mqttDisabledInput'),
+      timeEnabledInput: document.getElementById('timeEnabledInput'),
+      timeServerInput: document.getElementById('timeServerInput'),
+      timeTimezoneInput: document.getElementById('timeTimezoneInput'),
+      timeValid: document.getElementById('timeValid'),
+      timeSyncStatus: document.getElementById('timeSyncStatus'),
+      timeSyncEpoch: document.getElementById('timeSyncEpoch'),
+      scheduleSlots: document.getElementById('scheduleSlots'),
+      eventIdInput: document.getElementById('eventIdInput'),
+      eventCommandInput: document.getElementById('eventCommandInput'),
+      eventTimeInput: document.getElementById('eventTimeInput'),
+      eventRecurringInput: document.getElementById('eventRecurringInput'),
+      eventDowMaskInput: document.getElementById('eventDowMaskInput'),
+      eventDateInput: document.getElementById('eventDateInput'),
+      scheduleList: document.getElementById('scheduleList'),
       wifiSsidInput: document.getElementById('wifiSsidInput'),
       wifiPassInput: document.getElementById('wifiPassInput'),
       deviceName: document.getElementById('deviceName'),
@@ -534,6 +764,12 @@ namespace
       mdnsHostInline: document.getElementById('mdnsHostInline'),
       mqttHost: document.getElementById('mqttHost'),
       mqttPort: document.getElementById('mqttPort'),
+      mqttEnabled: document.getElementById('mqttEnabled'),
+      otaConfigured: document.getElementById('otaConfigured'),
+      otaCurrentVersion: document.getElementById('otaCurrentVersion'),
+      otaLatestVersion: document.getElementById('otaLatestVersion'),
+      otaUpdateAvailable: document.getElementById('otaUpdateAvailable'),
+      otaStatus: document.getElementById('otaStatus'),
       relayPin: document.getElementById('relayPin'),
       relayLedPin: document.getElementById('relayLedPin'),
       wifiLedPin: document.getElementById('wifiLedPin'),
@@ -550,9 +786,18 @@ namespace
         document.getElementById('btnToggle'),
         document.getElementById('btnRefresh'),
         document.getElementById('btnSaveConfig'),
-        document.getElementById('btnScanWifi')
+        document.getElementById('btnScanWifi'),
+        document.getElementById('btnSaveTimeConfig'),
+        document.getElementById('btnTimeSyncNow'),
+        document.getElementById('btnScheduleSave'),
+        document.getElementById('btnScheduleReset'),
+        document.getElementById('btnOtaCheck'),
+        document.getElementById('btnOtaUpdate')
       ]
     };
+
+    let currentMqttEnabled = true;
+    let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
 
     function setBusy(busy) {
       ids.buttons.forEach(b => b.disabled = busy);
@@ -609,6 +854,17 @@ namespace
       if (typeof obj.mqtt_port !== 'undefined') ids.mqttPort.textContent = obj.mqtt_port;
       if (obj.mqtt_host) ids.mqttHostInput.value = obj.mqtt_host;
       if (typeof obj.mqtt_port !== 'undefined') ids.mqttPortInput.value = obj.mqtt_port;
+      if (typeof obj.mqtt_enabled !== 'undefined') {
+        currentMqttEnabled = !!obj.mqtt_enabled;
+        ids.mqttDisabledInput.checked = !currentMqttEnabled;
+        ids.mqttEnabled.textContent = currentMqttEnabled ? 'yes' : 'no';
+      }
+      if (typeof obj.ota_configured !== 'undefined') {
+        ids.otaConfigured.textContent = obj.ota_configured ? 'yes' : 'no';
+      }
+      if (obj.firmware && obj.firmware.version) {
+        ids.otaCurrentVersion.textContent = obj.firmware.version;
+      }
       if (obj.wifi_ssid) ids.wifiSsidInput.value = obj.wifi_ssid;
       ids.wifiPassInput.placeholder = obj.wifi_password_set ? 'stored password' : 'new password';
       if (typeof obj.relay_pin !== 'undefined') ids.relayPin.textContent = obj.relay_pin;
@@ -643,6 +899,149 @@ namespace
       });
     }
 
+    function resetScheduleForm() {
+      ids.eventIdInput.value = '';
+      ids.eventCommandInput.value = '';
+      ids.eventTimeInput.value = '';
+      ids.eventRecurringInput.checked = true;
+      ids.eventDowMaskInput.value = '127';
+      ids.eventDateInput.value = '';
+    }
+
+    function validateTimeHm(value) {
+      const match = /^(\d{2}):(\d{2})$/.exec(value);
+      if (!match) {
+        return { ok: false, error: 'Time must be in HH:MM 24-hour format' };
+      }
+
+      const hh = Number(match[1]);
+      const mm = Number(match[2]);
+      if (!Number.isInteger(hh) || !Number.isInteger(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+        return { ok: false, error: 'Time must be between 00:00 and 23:59' };
+      }
+
+      return { ok: true };
+    }
+
+    function validateDowMask(value) {
+      if (!/^[0-9]{1,3}$/.test(value)) {
+        return { ok: false, error: 'Day mask must be a number from 0 to 127' };
+      }
+
+      const mask = Number(value);
+      if (!Number.isInteger(mask) || mask < 0 || mask > 127) {
+        return { ok: false, error: 'Day mask must be in range 0..127' };
+      }
+
+      return { ok: true };
+    }
+
+    function validateDateYmd(value) {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (!match) {
+        return { ok: false, error: 'Date must be in YYYY-MM-DD format' };
+      }
+
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+
+      if (year < 2020 || year > 2099 || month < 1 || month > 12 || day < 1 || day > 31) {
+        return { ok: false, error: 'Date is out of supported range (2020-2099)' };
+      }
+
+      const date = new Date(Date.UTC(year, month - 1, day));
+      const valid = date.getUTCFullYear() === year && (date.getUTCMonth() + 1) === month && date.getUTCDate() === day;
+      if (!valid) {
+        return { ok: false, error: 'Date is not a valid calendar day' };
+      }
+
+      return { ok: true };
+    }
+
+    function renderScheduleList(events) {
+      if (!Array.isArray(events) || events.length === 0) {
+        ids.scheduleList.innerHTML = '<li>No scheduled events yet.</li>';
+        return;
+      }
+
+      ids.scheduleList.innerHTML = events.map(event => {
+        const hh = String(event.hour).padStart(2, '0');
+        const mm = String(event.minute).padStart(2, '0');
+        const scheduleText = event.recurring
+          ? `Recurring mask ${event.dow_mask}`
+          : `One-time ${event.year}-${String(event.month).padStart(2, '0')}-${String(event.day).padStart(2, '0')}`;
+        return `<li data-id="${event.id}"><strong>#${event.id} ${event.command} @ ${hh}:${mm}</strong><small>${scheduleText} | ${event.enabled ? 'enabled' : 'disabled'}</small><div class="row" style="margin-top:6px"><button class="refresh" data-edit="${event.id}">EDIT</button><button class="off" data-delete="${event.id}">DELETE</button></div></li>`;
+      }).join('');
+
+      ids.scheduleList.querySelectorAll('button[data-edit]').forEach(button => {
+        button.addEventListener('click', () => {
+          const id = Number(button.getAttribute('data-edit'));
+          const event = events.find(e => Number(e.id) === id);
+          if (!event) return;
+          ids.eventIdInput.value = String(event.id);
+          ids.eventCommandInput.value = event.command || '';
+          ids.eventTimeInput.value = `${String(event.hour).padStart(2, '0')}:${String(event.minute).padStart(2, '0')}`;
+          ids.eventRecurringInput.checked = !!event.recurring;
+          ids.eventDowMaskInput.value = String(event.dow_mask || 127);
+          if (!event.recurring) {
+            ids.eventDateInput.value = `${event.year}-${String(event.month).padStart(2, '0')}-${String(event.day).padStart(2, '0')}`;
+          } else {
+            ids.eventDateInput.value = '';
+          }
+        });
+      });
+
+      ids.scheduleList.querySelectorAll('button[data-delete]').forEach(button => {
+        button.addEventListener('click', async () => {
+          const id = Number(button.getAttribute('data-delete'));
+          setBusy(true);
+          try {
+            const body = new URLSearchParams();
+            body.set('id', String(id));
+            const data = await parseResponse(await fetch('/schedule/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString()
+            }));
+            showTimeStatus(data);
+          } catch (err) {
+            showJson({ ok: false, error: err.error || 'Delete schedule failed' });
+          } finally {
+            setBusy(false);
+          }
+        });
+      });
+    }
+
+    function showTimeStatus(obj) {
+      if (!obj || !obj.ok) {
+        return;
+      }
+
+      timeState = obj;
+      ids.timeEnabledInput.checked = !!obj.enabled;
+      if (obj.server) ids.timeServerInput.value = obj.server;
+      if (obj.timezone) ids.timeTimezoneInput.value = obj.timezone;
+      ids.timeValid.textContent = obj.time_valid ? 'yes' : 'no';
+      ids.timeSyncStatus.textContent = obj.last_sync_status || 'unknown';
+      ids.timeSyncEpoch.textContent = typeof obj.last_sync_epoch !== 'undefined' ? String(obj.last_sync_epoch) : 'n/a';
+      ids.scheduleSlots.textContent = `${obj.count || 0}/${obj.capacity || 10}`;
+      renderScheduleList(obj.events || []);
+    }
+
+    function showOtaStatus(obj) {
+      if (!obj || !obj.ok) {
+        ids.otaStatus.textContent = (obj && obj.error) ? obj.error : 'OTA status unavailable';
+        return;
+      }
+
+      if (obj.current_version) ids.otaCurrentVersion.textContent = obj.current_version;
+      ids.otaLatestVersion.textContent = obj.latest_version || 'n/a';
+      ids.otaUpdateAvailable.textContent = obj.update_available ? 'yes' : 'no';
+      ids.otaStatus.textContent = obj.message || 'ready';
+    }
+
     async function parseResponse(res) {
       let data;
       try {
@@ -661,14 +1060,44 @@ namespace
     async function refreshStatus() {
       setBusy(true);
       try {
-        const [status, config] = await Promise.all([
+        const [status, config, timeStatus, otaStatus] = await Promise.all([
           parseResponse(await fetch('/status')),
-          parseResponse(await fetch('/config'))
+          parseResponse(await fetch('/config')),
+          parseResponse(await fetch('/time')),
+          parseResponse(await fetch('/ota/check'))
         ]);
         showJson(status);
         showConfig(config);
+        showTimeStatus(timeStatus);
+        showOtaStatus(otaStatus);
       } catch (err) {
         showJson({ ok: false, error: err.error || 'Status request failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function checkOtaUpdate() {
+      setBusy(true);
+      try {
+        const data = await parseResponse(await fetch('/ota/check', { method: 'POST' }));
+        showOtaStatus(data);
+        showJson({ ok: true, command: 'ota-check' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'OTA check failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function installOtaUpdate() {
+      setBusy(true);
+      try {
+        const data = await parseResponse(await fetch('/ota/update', { method: 'POST' }));
+        showOtaStatus(data);
+        showJson({ ok: true, command: 'ota-update' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'OTA update failed' });
       } finally {
         setBusy(false);
       }
@@ -707,10 +1136,12 @@ namespace
       const hostname = ids.hostnameInput.value.trim();
       const mqttHost = ids.mqttHostInput.value.trim();
       const mqttPort = ids.mqttPortInput.value.trim();
+      const mqttEnabled = !ids.mqttDisabledInput.checked;
       const wifiSsid = ids.wifiSsidInput.value.trim();
       const wifiPass = ids.wifiPassInput.value;
+      const mqttEnabledChanged = mqttEnabled !== currentMqttEnabled;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim()) {
+      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -721,6 +1152,7 @@ namespace
         if (hostname) body.set('hostname', hostname);
         if (mqttHost) body.set('mqtt_host', mqttHost);
         if (mqttPort) body.set('mqtt_port', mqttPort);
+        if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
         if (wifiSsid) body.set('wifi_ssid', wifiSsid);
         if (wifiPass.trim()) body.set('wifi_pass', wifiPass);
 
@@ -744,13 +1176,129 @@ namespace
       }
     }
 
+    async function saveTimeConfig() {
+      setBusy(true);
+      try {
+        const body = new URLSearchParams();
+        body.set('time_enabled', ids.timeEnabledInput.checked ? '1' : '0');
+        body.set('time_server', ids.timeServerInput.value.trim());
+        body.set('time_timezone', ids.timeTimezoneInput.value.trim());
+
+        const data = await parseResponse(await fetch('/time/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        }));
+
+        showTimeStatus(data);
+        showJson({ ok: true, command: 'save-time-config' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Saving time config failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function syncTimeNow() {
+      setBusy(true);
+      try {
+        const data = await parseResponse(await fetch('/time/sync', { method: 'POST' }));
+        showTimeStatus(data);
+        showJson({ ok: true, command: 'sync-time' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Time sync failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function saveScheduleEvent() {
+      const command = ids.eventCommandInput.value.trim();
+      const timeHm = ids.eventTimeInput.value.trim();
+      const recurring = ids.eventRecurringInput.checked;
+      const dowMask = ids.eventDowMaskInput.value.trim() || '127';
+      const dateYmd = ids.eventDateInput.value.trim();
+      const id = ids.eventIdInput.value.trim();
+
+      if (!command || !timeHm) {
+        showJson({ ok: false, error: 'Schedule command and time are required' });
+        return;
+      }
+
+      const timeCheck = validateTimeHm(timeHm);
+      if (!timeCheck.ok) {
+        showJson({ ok: false, error: timeCheck.error });
+        return;
+      }
+
+      if (!recurring && !dateYmd) {
+        showJson({ ok: false, error: 'One-time events require date YYYY-MM-DD' });
+        return;
+      }
+
+      if (recurring) {
+        const maskCheck = validateDowMask(dowMask);
+        if (!maskCheck.ok) {
+          showJson({ ok: false, error: maskCheck.error });
+          return;
+        }
+      }
+      else {
+        const dateCheck = validateDateYmd(dateYmd);
+        if (!dateCheck.ok) {
+          showJson({ ok: false, error: dateCheck.error });
+          return;
+        }
+      }
+
+      setBusy(true);
+      try {
+        const body = new URLSearchParams();
+        body.set('enabled', '1');
+        body.set('recurring', recurring ? '1' : '0');
+        body.set('command', command);
+        body.set('time_hm', timeHm);
+        if (recurring) {
+          body.set('dow_mask', dowMask);
+        } else {
+          body.set('date_ymd', dateYmd);
+        }
+
+        const endpoint = id ? '/schedule/update' : '/schedule/add';
+        if (id) {
+          body.set('id', id);
+        }
+
+        const data = await parseResponse(await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        }));
+
+        showTimeStatus(data);
+        resetScheduleForm();
+        showJson({ ok: true, command: id ? 'update-schedule' : 'add-schedule' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Saving schedule failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
     document.getElementById('btnOn').addEventListener('click', () => sendCommand('/on', 'on'));
     document.getElementById('btnOff').addEventListener('click', () => sendCommand('/off', 'off'));
     document.getElementById('btnToggle').addEventListener('click', () => sendCommand('/toggle', 'toggle'));
     document.getElementById('btnRefresh').addEventListener('click', refreshStatus);
     document.getElementById('btnSaveConfig').addEventListener('click', applyConfig);
     document.getElementById('btnScanWifi').addEventListener('click', scanWifi);
+    document.getElementById('btnSaveTimeConfig').addEventListener('click', saveTimeConfig);
+    document.getElementById('btnTimeSyncNow').addEventListener('click', syncTimeNow);
+    document.getElementById('btnScheduleSave').addEventListener('click', saveScheduleEvent);
+    document.getElementById('btnScheduleReset').addEventListener('click', resetScheduleForm);
+    document.getElementById('btnOtaCheck').addEventListener('click', checkOtaUpdate);
+    document.getElementById('btnOtaUpdate').addEventListener('click', installOtaUpdate);
 
+    resetScheduleForm();
     refreshStatus();
   </script>
 </body>
@@ -808,6 +1356,24 @@ void WebControlServer::registerRoutes()
              { handleConfig(); });
   gServer.on("/config", HTTP_POST, [this]()
              { handleConfigSave(); });
+  gServer.on("/time", HTTP_GET, [this]()
+             { handleTimeStatus(); });
+  gServer.on("/time/config", HTTP_POST, [this]()
+             { handleTimeConfigSave(); });
+  gServer.on("/time/sync", HTTP_POST, [this]()
+             { handleTimeSyncNow(); });
+  gServer.on("/schedule/add", HTTP_POST, [this]()
+             { handleScheduleAdd(); });
+  gServer.on("/schedule/update", HTTP_POST, [this]()
+             { handleScheduleUpdate(); });
+  gServer.on("/schedule/delete", HTTP_POST, [this]()
+             { handleScheduleDelete(); });
+  gServer.on("/ota/check", HTTP_GET, [this]()
+             { handleOtaCheck(); });
+  gServer.on("/ota/check", HTTP_POST, [this]()
+             { handleOtaCheck(); });
+  gServer.on("/ota/update", HTTP_POST, [this]()
+             { handleOtaUpdate(); });
   gServer.on("/wifi/scan", HTTP_GET, [this]()
              { handleWifiScan(); });
   gServer.on("/hostname", HTTP_POST, [this]()
@@ -953,6 +1519,7 @@ void WebControlServer::handleConfigSave()
   {
     const String mqttHost = gServer.arg("mqtt_host");
     const String mqttPortText = gServer.arg("mqtt_port");
+    const String mqttEnabledText = gServer.arg("mqtt_enabled");
     if (mqttHost.length() > 0 || mqttPortText.length() > 0)
     {
       const String currentHost = context.mqtt->serverHost();
@@ -968,6 +1535,12 @@ void WebControlServer::handleConfigSave()
         nextPort = MQTT_PORT;
       }
       context.mqtt->setServer(nextHost, nextPort);
+      settingsSaved = true;
+    }
+
+    if (mqttEnabledText.length() > 0)
+    {
+      context.mqtt->setEnabled(parseBoolArg(mqttEnabledText));
       settingsSaved = true;
     }
   }
@@ -1009,6 +1582,327 @@ void WebControlServer::handleConfigSave()
     json += ",\"restarting\":true}";
   }
 
+  gServer.send(200, "application/json", json);
+  delay(150);
+  ESP.restart();
+}
+
+void WebControlServer::handleTimeStatus()
+{
+  Serial.println("[HTTP] GET /time");
+
+  if (context.timeSync == nullptr || context.schedule == nullptr)
+  {
+    sendError(500, "Time manager or schedule manager unavailable");
+    return;
+  }
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"enabled\":";
+  json += context.timeSync->isEnabled() ? "true" : "false";
+  json += ",";
+  json += "\"server\":\"";
+  json += jsonEscape(context.timeSync->server());
+  json += "\",";
+  json += "\"timezone\":\"";
+  json += jsonEscape(context.timeSync->timezone());
+  json += "\",";
+  json += "\"time_valid\":";
+  json += context.timeSync->isTimeValid() ? "true" : "false";
+  json += ",";
+  json += "\"last_sync_epoch\":";
+  json += static_cast<unsigned long>(context.timeSync->lastSyncEpoch());
+  json += ",";
+  json += "\"last_sync_status\":\"";
+  json += jsonEscape(context.timeSync->lastSyncStatus());
+  json += "\",";
+  json += "\"count\":";
+  json += context.schedule->count();
+  json += ",";
+  json += "\"capacity\":";
+  json += context.schedule->capacity();
+  json += ",";
+  json += "\"events\":";
+  json += context.schedule->eventsJson();
+  json += "}";
+
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleTimeConfigSave()
+{
+  Serial.println("[HTTP] POST /time/config");
+
+  if (context.timeSync == nullptr)
+  {
+    sendError(500, "Time manager unavailable");
+    return;
+  }
+
+  const String enabledText = gServer.arg("time_enabled");
+  const String serverText = gServer.arg("time_server");
+  const String timezoneText = gServer.arg("time_timezone");
+
+  if (enabledText.length() > 0)
+  {
+    context.timeSync->setEnabled(parseBoolArg(enabledText));
+  }
+
+  if (serverText.length() > 0)
+  {
+    context.timeSync->setServer(serverText);
+  }
+
+  if (timezoneText.length() > 0)
+  {
+    context.timeSync->setTimezone(timezoneText);
+  }
+
+  handleTimeStatus();
+}
+
+void WebControlServer::handleTimeSyncNow()
+{
+  Serial.println("[HTTP] POST /time/sync");
+
+  if (context.timeSync == nullptr)
+  {
+    sendError(500, "Time manager unavailable");
+    return;
+  }
+
+  context.timeSync->forceSync();
+  handleTimeStatus();
+}
+
+void WebControlServer::handleScheduleAdd()
+{
+  Serial.println("[HTTP] POST /schedule/add");
+
+  if (context.schedule == nullptr)
+  {
+    sendError(500, "Schedule manager unavailable");
+    return;
+  }
+
+  ScheduleManager::EventData data;
+  const String enabledText = gServer.arg("enabled");
+  const String recurringText = gServer.arg("recurring");
+  data.enabled = enabledText.length() > 0 ? parseBoolArg(enabledText) : true;
+  data.recurring = recurringText.length() > 0 ? parseBoolArg(recurringText) : true;
+  data.command = gServer.arg("command");
+  data.command.trim();
+
+  const String hm = gServer.arg("time_hm");
+  if (!parseHourMinute(hm, data.hour, data.minute))
+  {
+    sendError(400, "Invalid time_hm. Use HH:MM");
+    return;
+  }
+
+  if (data.recurring)
+  {
+    const String maskText = gServer.arg("dow_mask");
+    if (maskText.length() == 0)
+    {
+      data.dowMask = 0x7F;
+    }
+    else
+    {
+      const int parsedMask = maskText.toInt();
+      if (parsedMask < 0 || parsedMask > 127)
+      {
+        sendError(400, "Invalid dow_mask. Use 0-127 with Monday as bit 0");
+        return;
+      }
+      data.dowMask = static_cast<uint8_t>(parsedMask);
+    }
+    data.year = 0;
+    data.month = 0;
+    data.day = 0;
+  }
+  else
+  {
+    const String date = gServer.arg("date_ymd");
+    if (!parseDateYmd(date, data.year, data.month, data.day))
+    {
+      sendError(400, "Invalid date_ymd. Use YYYY-MM-DD");
+      return;
+    }
+    data.dowMask = 0;
+  }
+
+  String error;
+  uint8_t createdId = 0;
+  if (!context.schedule->addEvent(data, createdId, error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Failed to add schedule");
+    return;
+  }
+
+  handleTimeStatus();
+}
+
+void WebControlServer::handleScheduleUpdate()
+{
+  Serial.println("[HTTP] POST /schedule/update");
+
+  if (context.schedule == nullptr)
+  {
+    sendError(500, "Schedule manager unavailable");
+    return;
+  }
+
+  const int id = gServer.arg("id").toInt();
+  if (id <= 0)
+  {
+    sendError(400, "Missing valid id");
+    return;
+  }
+
+  ScheduleManager::EventData data;
+  const String enabledText = gServer.arg("enabled");
+  const String recurringText = gServer.arg("recurring");
+  data.enabled = enabledText.length() > 0 ? parseBoolArg(enabledText) : true;
+  data.recurring = recurringText.length() > 0 ? parseBoolArg(recurringText) : true;
+  data.command = gServer.arg("command");
+  data.command.trim();
+
+  const String hm = gServer.arg("time_hm");
+  if (!parseHourMinute(hm, data.hour, data.minute))
+  {
+    sendError(400, "Invalid time_hm. Use HH:MM");
+    return;
+  }
+
+  if (data.recurring)
+  {
+    const String maskText = gServer.arg("dow_mask");
+    if (maskText.length() == 0)
+    {
+      data.dowMask = 0x7F;
+    }
+    else
+    {
+      const int parsedMask = maskText.toInt();
+      if (parsedMask < 0 || parsedMask > 127)
+      {
+        sendError(400, "Invalid dow_mask. Use 0-127 with Monday as bit 0");
+        return;
+      }
+      data.dowMask = static_cast<uint8_t>(parsedMask);
+    }
+    data.year = 0;
+    data.month = 0;
+    data.day = 0;
+  }
+  else
+  {
+    const String date = gServer.arg("date_ymd");
+    if (!parseDateYmd(date, data.year, data.month, data.day))
+    {
+      sendError(400, "Invalid date_ymd. Use YYYY-MM-DD");
+      return;
+    }
+    data.dowMask = 0;
+  }
+
+  String error;
+  if (!context.schedule->updateEvent(static_cast<uint8_t>(id), data, error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Failed to update schedule");
+    return;
+  }
+
+  handleTimeStatus();
+}
+
+void WebControlServer::handleScheduleDelete()
+{
+  Serial.println("[HTTP] POST /schedule/delete");
+
+  if (context.schedule == nullptr)
+  {
+    sendError(500, "Schedule manager unavailable");
+    return;
+  }
+
+  const int id = gServer.arg("id").toInt();
+  if (id <= 0)
+  {
+    sendError(400, "Missing valid id");
+    return;
+  }
+
+  if (!context.schedule->removeEvent(static_cast<uint8_t>(id)))
+  {
+    sendError(404, "Schedule event not found");
+    return;
+  }
+
+  handleTimeStatus();
+}
+
+void WebControlServer::handleOtaCheck()
+{
+  Serial.println("[HTTP] OTA check");
+
+  if (context.ota == nullptr)
+  {
+    sendError(500, "OTA manager unavailable");
+    return;
+  }
+
+  const OtaCheckResult result = context.ota->checkForUpdate();
+
+  String json = "{";
+  json += "\"ok\":";
+  json += result.ok ? "true" : "false";
+  json += ",";
+  json += "\"configured\":";
+  json += result.configured ? "true" : "false";
+  json += ",";
+  json += "\"current_version\":\"";
+  json += jsonEscape(result.currentVersion);
+  json += "\",";
+  json += "\"latest_version\":\"";
+  json += jsonEscape(result.latestVersion);
+  json += "\",";
+  json += "\"update_available\":";
+  json += result.updateAvailable ? "true" : "false";
+  json += ",";
+  json += "\"asset_url\":\"";
+  json += jsonEscape(result.assetUrl);
+  json += "\",";
+  json += "\"message\":\"";
+  json += jsonEscape(result.message);
+  json += "\"}";
+
+  gServer.send(result.ok ? 200 : 400, "application/json", json);
+}
+
+void WebControlServer::handleOtaUpdate()
+{
+  Serial.println("[HTTP] OTA update");
+
+  if (context.ota == nullptr)
+  {
+    sendError(500, "OTA manager unavailable");
+    return;
+  }
+
+  String message;
+  if (!context.ota->performUpdate(message))
+  {
+    String json = "{\"ok\":false,\"message\":\"";
+    json += jsonEscape(message);
+    json += "\"}";
+    gServer.send(400, "application/json", json);
+    return;
+  }
+
+  String json = "{\"ok\":true,\"update_available\":false,\"message\":\"Update installed. Rebooting device.\"}";
   gServer.send(200, "application/json", json);
   delay(150);
   ESP.restart();
