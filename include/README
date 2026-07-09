@@ -1,4 +1,10 @@
 
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Keith Jasper
+Contact: https://github.com/keithjasper83/ESPRelays/issues
+-->
+
 This directory is intended for project header files.
 
 A header file is a file containing C declarations and macro definitions

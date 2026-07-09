@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright (c) 2026 Keith Jasper
+# Contact: https://github.com/keithjasper83/ESPRelays/issues
+
 # This file was automatically generated for projects
 # without default 'CMakeLists.txt' file.
 

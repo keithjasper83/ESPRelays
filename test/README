@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Keith Jasper
+Contact: https://github.com/keithjasper83/ESPRelays/issues
+-->
+
 This directory contains automated tests for CI and optional hardware smoke checks.
 
 Automated host tests (used in GitHub CI):

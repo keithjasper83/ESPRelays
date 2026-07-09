@@ -1,3 +1,9 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Keith Jasper
+Contact: https://github.com/keithjasper83/ESPRelays/issues
+-->
+
 # Trademarks and Branding
 
 This repository is licensed under Apache-2.0 for code and related content,
