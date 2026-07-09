@@ -8,13 +8,16 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
 
 ![ContactorRelays hero](docs/images/hero-relay.svg)
 
-![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0B6E6E?style=for-the-badge)
+[![CI](https://img.shields.io/github/actions/workflow/status/keithjasper83/ESPRelays/ci.yml?branch=main&style=for-the-badge&label=CI)](https://github.com/keithjasper83/ESPRelays/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/keithjasper83/ESPRelays?style=for-the-badge&label=Release)](https://github.com/keithjasper83/ESPRelays/releases)
+[![Issues](https://img.shields.io/github/issues/keithjasper83/ESPRelays?style=for-the-badge&label=Issues)](https://github.com/keithjasper83/ESPRelays/issues)
+[![Stars](https://img.shields.io/github/stars/keithjasper83/ESPRelays?style=for-the-badge&label=Stars)](https://github.com/keithjasper83/ESPRelays/stargazers)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0B6E6E?style=for-the-badge)](LICENSE)
 ![Platform: ESP32-C3](https://img.shields.io/badge/Platform-ESP32--C3-0F766E?style=for-the-badge)
 ![Framework: Arduino](https://img.shields.io/badge/Framework-Arduino-0EA5A5?style=for-the-badge)
 ![MQTT Ready](https://img.shields.io/badge/MQTT-Ready-14532D?style=for-the-badge)
 ![OTA Enabled](https://img.shields.io/badge/OTA-Enabled-854D0E?style=for-the-badge)
 ![Local First](https://img.shields.io/badge/Local-First-1D4ED8?style=for-the-badge)
-![Status: Active](https://img.shields.io/badge/Status-Active%20Development-334155?style=for-the-badge)
 ![Suggestions Welcome](https://img.shields.io/badge/Suggestions-Welcome-7C3AED?style=for-the-badge)
 
 ContactorRelays turns a small ESP32 board into a serious automation edge node:
@@ -27,6 +30,10 @@ workshops, or small installations, this project is built for exactly that.
 ## Visual Preview
 
 ![Web panel concept preview](docs/images/web-panel-preview.svg)
+
+## Quick Demo Vibe
+
+![Animated relay pulse preview](docs/images/relay-pulse-demo.svg)
 
 ## System Flow At A Glance
 
