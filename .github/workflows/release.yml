@@ -30,29 +30,35 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Install PlatformIO
-        run: pip install --upgrade platformio
+        run: pip install --upgrade platformio gcovr
 
       - name: Build firmware
         run: pio run
 
-      - name: Run tests when present
-        shell: bash
+      - name: Run host tests
+        run: pio test -vvv -e native
+
+      - name: Enforce coverage gate
         run: |
-          if [ -d test ] && find test -type f ! -name "README*" | grep -q .; then
-            pio test -e esp32-c3-devkitm-1
-          else
-            echo "No PlatformIO tests configured; skipping pio test."
-          fi
+          gcovr \
+            --root . \
+            --object-directory .pio/build/native \
+            --filter src/CommandRouter.cpp \
+            --filter src/DeviceCommands.cpp \
+            --xml-pretty \
+            --output coverage.xml \
+            --html-details coverage.html \
+            --fail-under-line 90
 
       - name: Bump firmware version and update changelog
         id: versioning
