@@ -6,12 +6,31 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
 
 # ContactorRelays
 
+![ContactorRelays hero](docs/images/hero-relay.svg)
+
+![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0B6E6E?style=for-the-badge)
+![Platform: ESP32-C3](https://img.shields.io/badge/Platform-ESP32--C3-0F766E?style=for-the-badge)
+![Framework: Arduino](https://img.shields.io/badge/Framework-Arduino-0EA5A5?style=for-the-badge)
+![MQTT Ready](https://img.shields.io/badge/MQTT-Ready-14532D?style=for-the-badge)
+![OTA Enabled](https://img.shields.io/badge/OTA-Enabled-854D0E?style=for-the-badge)
+![Local First](https://img.shields.io/badge/Local-First-1D4ED8?style=for-the-badge)
+![Status: Active](https://img.shields.io/badge/Status-Active%20Development-334155?style=for-the-badge)
+![Suggestions Welcome](https://img.shields.io/badge/Suggestions-Welcome-7C3AED?style=for-the-badge)
+
 ContactorRelays turns a small ESP32 board into a serious automation edge node:
 fast local control, resilient remote commands, and enough scheduling intelligence
 to run real-world devices without babysitting.
 
 If you want "set it and trust it" relay control for home labs, utility spaces,
 workshops, or small installations, this project is built for exactly that.
+
+## Visual Preview
+
+![Web panel concept preview](docs/images/web-panel-preview.svg)
+
+## System Flow At A Glance
+
+![ContactorRelays high-level flow](docs/images/network-flow.svg)
 
 ## Why It Exists
 

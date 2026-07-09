@@ -1,0 +1,51 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Keith Jasper
+Contact: https://github.com/keithjasper83/ESPRelays/issues
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 520" role="img" aria-label="ContactorRelays flow diagram">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="520" fill="url(#bg)" rx="24"/>
+
+  <g font-family="Segoe UI, Arial, sans-serif" fill="#E2E8F0">
+    <rect x="70" y="205" width="230" height="110" rx="16" fill="#0EA5A5"/>
+    <text x="100" y="268" font-size="26" font-weight="700" fill="#032C2C">Web UI</text>
+
+    <rect x="360" y="205" width="260" height="110" rx="16" fill="#22C55E"/>
+    <text x="392" y="268" font-size="26" font-weight="700" fill="#052111">ESP32 Node</text>
+
+    <rect x="680" y="80" width="230" height="100" rx="16" fill="#F59E0B"/>
+    <text x="730" y="137" font-size="24" font-weight="700" fill="#3A2202">MQTT</text>
+
+    <rect x="680" y="210" width="230" height="100" rx="16" fill="#A78BFA"/>
+    <text x="732" y="268" font-size="24" font-weight="700" fill="#1F114F">OTA API</text>
+
+    <rect x="680" y="340" width="230" height="100" rx="16" fill="#38BDF8"/>
+    <text x="708" y="398" font-size="24" font-weight="700" fill="#06253A">NTP/Discovery</text>
+
+    <rect x="970" y="205" width="160" height="110" rx="16" fill="#E11D48"/>
+    <text x="998" y="268" font-size="24" font-weight="700" fill="#3A0715">Relay</text>
+  </g>
+
+  <g stroke="#E2E8F0" stroke-width="5" fill="none" stroke-linecap="round">
+    <path d="M300 260 L360 260"/>
+    <path d="M620 260 L680 130"/>
+    <path d="M620 260 L680 260"/>
+    <path d="M620 260 L680 390"/>
+    <path d="M910 260 L970 260"/>
+  </g>
+
+  <g fill="#E2E8F0" font-family="Segoe UI, Arial, sans-serif" font-size="18">
+    <text x="312" y="248">HTTP</text>
+    <text x="638" y="188">Pub/Sub</text>
+    <text x="638" y="248">Checks</text>
+    <text x="638" y="338">Sync</text>
+    <text x="920" y="248">GPIO</text>
+  </g>
+</svg>

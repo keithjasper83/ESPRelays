@@ -1,0 +1,40 @@
+<!--
+SPDX-License-Identifier: Apache-2.0
+Copyright (c) 2026 Keith Jasper
+Contact: https://github.com/keithjasper83/ESPRelays/issues
+-->
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-label="ContactorRelays hero">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#042A2B"/>
+      <stop offset="55%" stop-color="#0B6E6E"/>
+      <stop offset="100%" stop-color="#D9C26C"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.05"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="420" fill="url(#bg)" rx="24"/>
+  <circle cx="1070" cy="70" r="130" fill="#ffffff" opacity="0.09"/>
+  <circle cx="70" cy="360" r="180" fill="#ffffff" opacity="0.08"/>
+
+  <rect x="70" y="74" width="500" height="270" rx="18" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.35"/>
+  <text x="100" y="138" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#F8F7F1" font-weight="700">ContactorRelays</text>
+  <text x="100" y="180" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#F8F7F1">Local-first ESP32 relay automation</text>
+  <text x="100" y="216" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#F8F7F1">MQTT • OTA • Scheduling • Discovery</text>
+
+  <g transform="translate(650,68)">
+    <rect x="0" y="0" width="470" height="284" rx="18" fill="#051D1D" fill-opacity="0.45" stroke="#D9C26C" stroke-opacity="0.75"/>
+    <rect x="30" y="36" width="175" height="90" rx="12" fill="#0FA3A3"/>
+    <rect x="225" y="36" width="215" height="40" rx="10" fill="#F8F7F1" fill-opacity="0.88"/>
+    <rect x="225" y="86" width="215" height="40" rx="10" fill="#F8F7F1" fill-opacity="0.64"/>
+    <rect x="30" y="146" width="410" height="28" rx="8" fill="#F8F7F1" fill-opacity="0.72"/>
+    <rect x="30" y="186" width="410" height="28" rx="8" fill="#F8F7F1" fill-opacity="0.62"/>
+    <rect x="30" y="226" width="410" height="28" rx="8" fill="#F8F7F1" fill-opacity="0.52"/>
+    <text x="44" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#022A2A" font-weight="700">Relay ON</text>
+    <text x="44" y="111" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#022A2A">Last switch: 12:42:08</text>
+  </g>
+</svg>
