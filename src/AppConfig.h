@@ -2,6 +2,19 @@
 
 #include <Arduino.h>
 
+// Optional untracked local overrides for machine-specific defaults.
+#if __has_include("AppConfig.local.h")
+#include "AppConfig.local.h"
+#endif
+
+#ifndef WIFI_SSID_DEFAULT
+#define WIFI_SSID_DEFAULT "CHANGE_ME_WIFI_SSID"
+#endif
+
+#ifndef WIFI_PASS_DEFAULT
+#define WIFI_PASS_DEFAULT "CHANGE_ME_WIFI_PASS"
+#endif
+
 constexpr uint8_t DEBUG_JUMPER_PIN = 4;
 
 constexpr uint8_t RELAY_PIN = 5;
@@ -17,8 +30,8 @@ constexpr uint8_t RELAY_BUTTON_PIN = 3;
 constexpr uint8_t RESET_BUTTON_PIN = 10;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 50;
 
-constexpr char WIFI_SSID[] = "CHANGE_ME_WIFI_SSID";
-constexpr char WIFI_PASS[] = "CHANGE_ME_WIFI_PASS";
+constexpr char WIFI_SSID[] = WIFI_SSID_DEFAULT;
+constexpr char WIFI_PASS[] = WIFI_PASS_DEFAULT;
 
 constexpr char DEVICE_HOSTNAME_DEFAULT[] = "homerelay";
 constexpr char DEVICE_NAME_DEFAULT[] = "Home Relay";
