@@ -6,6 +6,9 @@ class CommandRouter;
 class RelayController;
 class WiFiManager;
 class MqttManager;
+class TimeSyncManager;
+class ScheduleManager;
+class OtaUpdateManager;
 
 using HostnameGetter = String (*)();
 using HostnameSetter = bool (*)(const String &hostname, String &error);
@@ -18,6 +21,9 @@ struct WebControlContext
     RelayController *relay = nullptr;
     WiFiManager *wifi = nullptr;
     MqttManager *mqtt = nullptr;
+    TimeSyncManager *timeSync = nullptr;
+    ScheduleManager *schedule = nullptr;
+    OtaUpdateManager *ota = nullptr;
     HostnameGetter getHostname = nullptr;
     HostnameSetter setHostname = nullptr;
     MqttClientIdGetter getMqttClientId = nullptr;
@@ -45,6 +51,14 @@ private:
     void handleConfig();
     void handleWifiScan();
     void handleConfigSave();
+    void handleTimeStatus();
+    void handleTimeConfigSave();
+    void handleTimeSyncNow();
+    void handleScheduleAdd();
+    void handleScheduleUpdate();
+    void handleScheduleDelete();
+    void handleOtaCheck();
+    void handleOtaUpdate();
     void handleSetHostname();
     void handleNotFound();
 

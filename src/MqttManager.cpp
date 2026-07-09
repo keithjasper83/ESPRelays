@@ -12,6 +12,7 @@ namespace
     constexpr char MQTT_PREF_NAMESPACE[] = "mqtt_cfg";
     constexpr char MQTT_PREF_HOST[] = "host";
     constexpr char MQTT_PREF_PORT[] = "port";
+    constexpr char MQTT_PREF_ENABLED[] = "enabled";
     constexpr unsigned long MQTT_TELEMETRY_INTERVAL_MS = 60000;
 }
 
@@ -82,6 +83,7 @@ void MqttManager::loadSettings()
 
     mqttHost = preferences.getString(MQTT_PREF_HOST, MQTT_HOST);
     mqttPort = preferences.getInt(MQTT_PREF_PORT, MQTT_PORT);
+    mqttEnabled = preferences.getBool(MQTT_PREF_ENABLED, true);
     nvsReadyFlag = true;
     preferences.end();
 
@@ -173,6 +175,35 @@ void MqttManager::setServer(const String &host, int port)
     lastMqttRetry = 0;
 }
 
+void MqttManager::setEnabled(bool enabled)
+{
+    loadSettings();
+
+    mqttEnabled = enabled;
+
+    Preferences preferences;
+    if (!preferences.begin(MQTT_PREF_NAMESPACE, false))
+    {
+        Serial.println("[NVS] Warning: failed to save MQTT enabled state.");
+        nvsReadyFlag = false;
+        return;
+    }
+
+    preferences.putBool(MQTT_PREF_ENABLED, mqttEnabled);
+    nvsReadyFlag = true;
+    preferences.end();
+
+    if (!mqttEnabled && mqtt.connected())
+    {
+        mqtt.disconnect();
+    }
+}
+
+bool MqttManager::isEnabled() const
+{
+    return mqttEnabled;
+}
+
 String MqttManager::clientId() const
 {
     return mqttClientId;
@@ -205,7 +236,7 @@ int MqttManager::state()
 
 void MqttManager::publishRelayState(bool relayOn)
 {
-    if (mqtt.connected())
+    if (mqttEnabled && mqtt.connected())
     {
         mqtt.publish(topicState.c_str(), relayOn ? "ON" : "OFF", true);
     }
@@ -213,7 +244,7 @@ void MqttManager::publishRelayState(bool relayOn)
 
 void MqttManager::publishStatusAndTemperature(bool relayOn)
 {
-    if (!mqtt.connected())
+    if (!mqttEnabled || !mqtt.connected())
     {
         return;
     }
@@ -264,6 +295,15 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
 
 void MqttManager::connectIfNeeded(bool relayOn)
 {
+    if (!mqttEnabled)
+    {
+        if (mqtt.connected())
+        {
+            mqtt.disconnect();
+        }
+        return;
+    }
+
     if (mqtt.connected())
     {
         mqtt.loop();
@@ -354,6 +394,15 @@ void MqttManager::connectIfNeeded(bool relayOn)
 
 void MqttManager::maintain(bool wifiConnected, bool relayOn)
 {
+    if (!mqttEnabled)
+    {
+        if (mqtt.connected())
+        {
+            mqtt.disconnect();
+        }
+        return;
+    }
+
     if (!wifiConnected)
     {
         return;

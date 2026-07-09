@@ -1,0 +1,200 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Semver bump type"
+        required: true
+        type: choice
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
+      release_notes_override:
+        description: "Optional release notes (leave empty to auto-generate from git history)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: manual-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Run tests when present
+        shell: bash
+        run: |
+          if [ -d test ] && find test -type f ! -name "README*" | grep -q .; then
+            pio test -e esp32-c3-devkitm-1
+          else
+            echo "No PlatformIO tests configured; skipping pio test."
+          fi
+
+      - name: Bump firmware version and update changelog
+        id: versioning
+        shell: bash
+        env:
+          BUMP_TYPE: ${{ inputs.bump }}
+          NOTES_OVERRIDE: ${{ inputs.release_notes_override }}
+        run: |
+          python - <<'PY'
+          import datetime
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          root = pathlib.Path('.').resolve()
+          app_config = root / 'src' / 'AppConfig.h'
+          changelog = root / 'CHANGELOG.md'
+
+          text = app_config.read_text(encoding='utf-8')
+          m = re.search(r'FIRMWARE_VERSION\[]\s*=\s*"(\d+)\.(\d+)\.(\d+)";', text)
+          if not m:
+              print('Failed to parse FIRMWARE_VERSION from AppConfig.h', file=sys.stderr)
+              sys.exit(1)
+
+          major, minor, patch = map(int, m.groups())
+          bump = os.environ.get('BUMP_TYPE', 'patch')
+          if bump == 'major':
+              major += 1
+              minor = 0
+              patch = 0
+          elif bump == 'minor':
+              minor += 1
+              patch = 0
+          else:
+              patch += 1
+
+          new_version = f"{major}.{minor}.{patch}"
+          new_tag = f"v{new_version}"
+
+          updated = re.sub(
+              r'(FIRMWARE_VERSION\[]\s*=\s*")\d+\.\d+\.\d+(";)',
+              rf'\g<1>{new_version}\2',
+              text,
+              count=1,
+          )
+          app_config.write_text(updated, encoding='utf-8')
+
+          def run_git(args):
+              return subprocess.run(['git', *args], check=False, capture_output=True, text=True)
+
+          last_tag_proc = run_git(['describe', '--tags', '--abbrev=0'])
+          if last_tag_proc.returncode == 0:
+              last_tag = last_tag_proc.stdout.strip()
+              log_range = f'{last_tag}..HEAD'
+          else:
+              last_tag = None
+              log_range = 'HEAD~50..HEAD'
+
+          log_proc = run_git(['log', '--pretty=format:- %s (%h)', log_range])
+          auto_notes = log_proc.stdout.strip() if log_proc.returncode == 0 else ''
+          if not auto_notes:
+              auto_notes = '- Maintenance release'
+
+          override = os.environ.get('NOTES_OVERRIDE', '').strip()
+          notes = override if override else auto_notes
+
+          today = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+          section = f"## {new_tag} - {today}\n\n{notes}\n\n"
+
+          if changelog.exists():
+              cl_text = changelog.read_text(encoding='utf-8')
+              if cl_text.startswith('# Changelog'):
+                  parts = cl_text.split('\n', 2)
+                  if len(parts) >= 3:
+                      cl_text = parts[0] + '\n\n' + section + parts[2]
+                  else:
+                      cl_text = parts[0] + '\n\n' + section
+              else:
+                  cl_text = '# Changelog\n\n' + section + cl_text
+          else:
+              cl_text = '# Changelog\n\n' + section
+
+          changelog.write_text(cl_text, encoding='utf-8')
+
+          notes_file = root / 'release_notes.md'
+          notes_file.write_text(section, encoding='utf-8')
+
+          github_output = os.environ.get('GITHUB_OUTPUT')
+          if github_output:
+              with open(github_output, 'a', encoding='utf-8') as fh:
+                  fh.write(f'new_version={new_version}\n')
+                  fh.write(f'new_tag={new_tag}\n')
+
+          print(f'Bumped to {new_tag}')
+          PY
+
+      - name: Commit version + changelog
+        shell: bash
+        env:
+          NEW_TAG: ${{ steps.versioning.outputs.new_tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/AppConfig.h CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "No versioning changes to commit."
+          else
+            git commit -m "chore(release): ${NEW_TAG}"
+          fi
+
+      - name: Rebuild firmware with bumped version
+        run: pio run
+
+      - name: Package release assets
+        id: package
+        shell: bash
+        env:
+          NEW_TAG: ${{ steps.versioning.outputs.new_tag }}
+        run: |
+          mkdir -p dist
+          cp .pio/build/esp32-c3-devkitm-1/firmware.bin dist/firmware-esp32-c3-devkitm-1.bin
+          cp .pio/build/esp32-c3-devkitm-1/firmware.bin dist/firmware-esp32-c3-devkitm-1-${NEW_TAG}.bin
+          sha256sum dist/firmware-esp32-c3-devkitm-1.bin > dist/firmware-esp32-c3-devkitm-1.bin.sha256
+
+      - name: Push commit and tag
+        shell: bash
+        env:
+          NEW_TAG: ${{ steps.versioning.outputs.new_tag }}
+        run: |
+          git tag ${NEW_TAG}
+          git push origin HEAD
+          git push origin ${NEW_TAG}
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.versioning.outputs.new_tag }}
+          name: ${{ steps.versioning.outputs.new_tag }}
+          body_path: release_notes.md
+          files: |
+            dist/firmware-esp32-c3-devkitm-1.bin
+            dist/firmware-esp32-c3-devkitm-1-${{ steps.versioning.outputs.new_tag }}.bin
+            dist/firmware-esp32-c3-devkitm-1.bin.sha256

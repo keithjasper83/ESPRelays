@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio gcovr
+
+      - name: Build firmware
+        run: pio run
+
+      - name: Run host tests
+        run: pio test -e native
+
+      - name: Enforce coverage gate
+        run: |
+          gcovr \
+            --root . \
+            --object-directory .pio/build/native \
+            --filter src/CommandRouter.cpp \
+            --filter src/DeviceCommands.cpp \
+            --xml-pretty \
+            --output coverage.xml \
+            --html-details coverage.html \
+            --fail-under-line 90
+
+      - name: Upload coverage artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            coverage.xml
+            coverage.html
