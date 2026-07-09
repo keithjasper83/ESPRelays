@@ -131,8 +131,8 @@ public:
     bool restarted = false;
 };
 
-extern HardwareSerial Serial;
-extern EspStub ESP;
+inline HardwareSerial Serial;
+inline EspStub ESP;
 
 inline void delay(unsigned long)
 {

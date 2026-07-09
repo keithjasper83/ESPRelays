@@ -3,6 +3,14 @@
 
 #include "AppConfig.h"
 
+void setUp()
+{
+}
+
+void tearDown()
+{
+}
+
 void test_defaults_strings_are_present()
 {
     TEST_ASSERT_GREATER_THAN_UINT32(0, std::strlen(DEVICE_HOSTNAME_DEFAULT));

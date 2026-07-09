@@ -33,6 +33,14 @@ namespace
     }
 }
 
+void setUp()
+{
+}
+
+void tearDown()
+{
+}
+
 void test_required_post_routes_exist()
 {
     const std::string web = readWorkspaceFile("src/WebControlServer.cpp");
