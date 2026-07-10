@@ -57,7 +57,7 @@ constexpr uint32_t TIME_SYNC_RETRY_MS = 60UL * 1000UL;
 
 constexpr uint8_t SCHEDULE_MAX_EVENTS = 10;
 
-constexpr char OTA_RELEASE_INFO_URL[] = "https://api.github.com/repos/OWNER/REPO/releases/latest";
+constexpr char OTA_RELEASE_INFO_URL[] = "https://api.github.com/repos/keithjasper83/ESPRelays/releases/latest";
 constexpr char OTA_FIRMWARE_ASSET_NAME[] = "firmware-esp32-c3-devkitm-1.bin";
 
 constexpr char TOPIC_CMD[] = "home/relay/command";
