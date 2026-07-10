@@ -1065,17 +1065,25 @@ namespace
 
     async function refreshStatus() {
       setBusy(true);
+
       try {
-        const [status, config, timeStatus, otaStatus] = await Promise.all([
-          parseResponse(await fetch('/status')),
-          parseResponse(await fetch('/config')),
-          parseResponse(await fetch('/time')),
-          parseResponse(await fetch('/ota/check'))
-        ]);
+        // Update relay and core status first so the UI is responsive even if OTA check is slow.
+        const status = await parseResponse(await fetch('/status'));
         showJson(status);
+
+        const [config, timeStatus] = await Promise.all([
+          parseResponse(await fetch('/config')),
+          parseResponse(await fetch('/time'))
+        ]);
         showConfig(config);
         showTimeStatus(timeStatus);
-        showOtaStatus(otaStatus);
+
+        try {
+          const otaStatus = await parseResponse(await fetch('/ota/check'));
+          showOtaStatus(otaStatus);
+        } catch (otaErr) {
+          showOtaStatus(otaErr || { ok: false, error: 'OTA status unavailable' });
+        }
       } catch (err) {
         showJson({ ok: false, error: err.error || 'Status request failed' });
       } finally {
