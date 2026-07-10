@@ -81,6 +81,7 @@ String getDiscoveryCapabilitiesJson();
 String getDiscoveryModel();
 bool dispatchScheduledCommand(const String &command);
 void printTimestampLine();
+void ensureWeeklyOtaUpdateSchedule();
 
 String sanitizeHostname(const String &requested)
 {
@@ -515,6 +516,32 @@ void printTimestampLine()
     Serial.println(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
 }
 
+void ensureWeeklyOtaUpdateSchedule()
+{
+    ScheduleManager::EventData weeklyOta;
+    weeklyOta.enabled = true;
+    weeklyOta.recurring = true;
+    weeklyOta.hour = 10;
+    weeklyOta.minute = 30;
+    weeklyOta.dowMask = 0x01; // Monday (bit0)
+    weeklyOta.command = "ota-update";
+
+    uint8_t eventId = 0;
+    bool created = false;
+    String error;
+    if (!scheduleManager.ensureRecurringEvent(weeklyOta, eventId, created, error))
+    {
+        Serial.print("[SCHEDULE] Weekly OTA schedule not applied: ");
+        Serial.println(error.length() > 0 ? error : String("unknown error"));
+        return;
+    }
+
+    Serial.print("[SCHEDULE] Weekly OTA update set for Monday 10:30 (event #");
+    Serial.print(eventId);
+    Serial.print(") ");
+    Serial.println(created ? "created" : "already present");
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -578,6 +605,7 @@ void setup()
 
     timeSyncManager.begin();
     scheduleManager.begin();
+    ensureWeeklyOtaUpdateSchedule();
     otaUpdateManager.begin();
 
     DiscoveryConfig discoveryConfig;
