@@ -46,6 +46,30 @@ workshops, or small installations, this project is built for exactly that.
 - Hardware-aware defaults for ESP32-C3 deployments.
 - A clean base for extending into your own automation platform.
 
+## Mission Statement: Your Hardware, Your Rules
+
+We believe devices in your home should stay yours.
+
+That means we do not hard-lock firmware into an unchangeable state by default.
+Yes, security matters. A lot. But context matters too:
+
+- This is home automation gear, not a nuclear launch console.
+- The realistic threat model is usually inconvenience, not national-security meltdown.
+- If someone hacks your relay and turns your TV off during Coronation Street,
+  that is annoying and deeply rude, but it is not a state emergency.
+
+So our design stance is simple:
+
+- Prioritize secure defaults and transparent hardening options.
+- Keep recovery and owner control possible.
+- Avoid permanent lock-in that bricks ownership if support disappears.
+
+If the company, cloud, or update server ever vanishes into the void, your kit
+should still work in your house, on your terms, with firmware you can inspect
+and replace.
+
+Security should protect users, not trap them.
+
 ## Key Capabilities
 
 - Web control endpoints for direct relay interaction and runtime configuration.
