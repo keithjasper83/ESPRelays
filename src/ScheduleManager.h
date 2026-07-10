@@ -36,6 +36,7 @@ public:
     bool updateEvent(uint8_t id, const EventData &data, String &error);
     bool removeEvent(uint8_t id);
     bool ensureRecurringEvent(const EventData &data, uint8_t &eventId, bool &created, String &error);
+    bool removeRecurringEvent(const EventData &data, uint8_t &eventId, bool &removed, String &error);
 
     String eventsJson() const;
     uint8_t count() const;

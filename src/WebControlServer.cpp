@@ -746,6 +746,7 @@ namespace
 
     <div class="card">
       <div class="kv"><strong>Relay:</strong> <span id="relay">unknown</span></div>
+      <div class="kv"><strong>Firmware Version:</strong> <span id="firmwareVersion">n/a</span></div>
       <div class="kv"><strong>Last command:</strong> <span id="last">none</span></div>
       <div class="kv"><strong>Uptime:</strong> <span id="uptime">n/a</span></div>
       <div class="kv"><strong>Hostname:</strong> <span id="hostname">n/a</span></div>
@@ -762,6 +763,7 @@ namespace
   <script>
     const ids = {
       relay: document.getElementById('relay'),
+      firmwareVersion: document.getElementById('firmwareVersion'),
       last: document.getElementById('last'),
       uptime: document.getElementById('uptime'),
       hostname: document.getElementById('hostname'),
@@ -870,6 +872,7 @@ namespace
         ids.hostname.textContent = obj.hostname;
         ids.hostnameInput.value = obj.hostname;
       }
+      if (obj.firmware_version) ids.firmwareVersion.textContent = obj.firmware_version;
       if (obj.mqtt_client_id) ids.mqttClientId.textContent = obj.mqtt_client_id;
       if (obj.command) ids.last.textContent = obj.command;
       ids.error.textContent = obj.ok ? 'none' : (obj.error || 'request failed');
@@ -1530,6 +1533,8 @@ void WebControlServer::handleStatus()
   json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
   json += "\",\"mqtt_client_id\":\"";
   json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
+  json += "\",\"firmware_version\":\"";
+  json += FIRMWARE_VERSION;
   json += "\",\"uptime_ms\":";
   json += millis();
   json += "}";

@@ -465,6 +465,49 @@ bool ScheduleManager::ensureRecurringEvent(const EventData &data, uint8_t &event
     return added;
 }
 
+bool ScheduleManager::removeRecurringEvent(const EventData &data, uint8_t &eventId, bool &removed, String &error)
+{
+    loadSettings();
+
+    if (!data.recurring)
+    {
+        error = "removeRecurringEvent requires recurring=true";
+        return false;
+    }
+
+    if (!validate(data, error))
+    {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < SCHEDULE_MAX_EVENTS; i++)
+    {
+        EventRecord &event = events[i];
+        if (!event.used || !event.data.recurring)
+        {
+            continue;
+        }
+
+        if (event.data.hour != data.hour ||
+            event.data.minute != data.minute ||
+            event.data.dowMask != data.dowMask ||
+            event.data.command != data.command)
+        {
+            continue;
+        }
+
+        eventId = event.id;
+        removed = true;
+        event = {};
+        persistSettings();
+        return true;
+    }
+
+    removed = false;
+    eventId = 0;
+    return true;
+}
+
 String ScheduleManager::eventsJson() const
 {
     String json = "[";

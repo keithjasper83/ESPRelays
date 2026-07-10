@@ -81,7 +81,7 @@ String getDiscoveryCapabilitiesJson();
 String getDiscoveryModel();
 bool dispatchScheduledCommand(const String &command);
 void printTimestampLine();
-void ensureWeeklyOtaUpdateSchedule();
+void disableWeeklyOtaUpdateSchedule();
 
 String sanitizeHostname(const String &requested)
 {
@@ -516,7 +516,7 @@ void printTimestampLine()
     Serial.println(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
 }
 
-void ensureWeeklyOtaUpdateSchedule()
+void disableWeeklyOtaUpdateSchedule()
 {
     ScheduleManager::EventData weeklyOta;
     weeklyOta.enabled = true;
@@ -527,19 +527,24 @@ void ensureWeeklyOtaUpdateSchedule()
     weeklyOta.command = "ota-update";
 
     uint8_t eventId = 0;
-    bool created = false;
+    bool removed = false;
     String error;
-    if (!scheduleManager.ensureRecurringEvent(weeklyOta, eventId, created, error))
+    if (!scheduleManager.removeRecurringEvent(weeklyOta, eventId, removed, error))
     {
-        Serial.print("[SCHEDULE] Weekly OTA schedule not applied: ");
+        Serial.print("[SCHEDULE] Weekly OTA schedule cleanup failed: ");
         Serial.println(error.length() > 0 ? error : String("unknown error"));
         return;
     }
 
-    Serial.print("[SCHEDULE] Weekly OTA update set for Monday 10:30 (event #");
-    Serial.print(eventId);
-    Serial.print(") ");
-    Serial.println(created ? "created" : "already present");
+    if (removed)
+    {
+        Serial.print("[SCHEDULE] Removed weekly OTA auto-update event #");
+        Serial.println(eventId);
+    }
+    else
+    {
+        Serial.println("[SCHEDULE] No weekly OTA auto-update event found (already disabled)");
+    }
 }
 
 void setup()
@@ -553,6 +558,8 @@ void setup()
 
     Serial.println();
     Serial.println("ESP32-C3 RELAY WIFI MQTT");
+    Serial.print("Firmware version: ");
+    Serial.println(FIRMWARE_VERSION);
     Serial.print("Debug logging: ");
     Serial.println(debugLogging ? "ON" : "OFF");
     Serial.println("Type 'help' for available commands.");
@@ -605,7 +612,7 @@ void setup()
 
     timeSyncManager.begin();
     scheduleManager.begin();
-    ensureWeeklyOtaUpdateSchedule();
+    disableWeeklyOtaUpdateSchedule();
     otaUpdateManager.begin();
 
     DiscoveryConfig discoveryConfig;
