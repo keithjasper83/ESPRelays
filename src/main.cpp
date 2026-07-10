@@ -516,7 +516,7 @@ void heartbeat()
 void printTimestampLine()
 {
     const unsigned long nowMs = millis();
-    if (nowMs - lastTimestampLog < 15000)
+    if (nowMs - lastTimestampLog < 60000)
     {
         return;
     }
@@ -524,9 +524,13 @@ void printTimestampLine()
     lastTimestampLog = nowMs;
 
     const time_t now = time(nullptr);
+    Serial.print("[STATUS] version=");
+    Serial.print(FIRMWARE_VERSION);
+    Serial.print(" | ");
+
     if (now <= 0)
     {
-        Serial.print("[TIME] unsynced");
+        Serial.print("time=unsynced");
     }
     else
     {
@@ -536,18 +540,18 @@ void printTimestampLine()
             char buffer[48];
             if (strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S %Z", &localTime) > 0)
             {
-                Serial.print("[TIME] ");
+                Serial.print("time=");
                 Serial.print(buffer);
             }
             else
             {
-                Serial.print("[TIME] epoch=");
+                Serial.print("time_epoch=");
                 Serial.print(static_cast<unsigned long>(now));
             }
         }
         else
         {
-            Serial.print("[TIME] epoch=");
+            Serial.print("time_epoch=");
             Serial.print(static_cast<unsigned long>(now));
         }
     }
