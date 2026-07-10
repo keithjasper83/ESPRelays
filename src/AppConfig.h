@@ -43,7 +43,7 @@ constexpr char DEVICE_HOSTNAME_DEFAULT[] = "homerelay";
 constexpr char DEVICE_NAME_DEFAULT[] = "Home Relay";
 constexpr char DEVICE_TYPE_DEFAULT[] = "relay";
 constexpr char FIRMWARE_NAME[] = "esp-relay-controller";
-constexpr char FIRMWARE_VERSION[] = "2.1.0";
+constexpr char FIRMWARE_VERSION[] = "2.1.1";
 
 constexpr char MQTT_HOST[] = "192.168.0.50";
 constexpr int MQTT_PORT = 1883;

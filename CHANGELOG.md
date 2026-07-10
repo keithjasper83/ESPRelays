@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.1.1 - 2026-07-10
+
+- Maintenance release
+
 ## v2.1.0 - 2026-07-10
 
 - Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (65489de)
