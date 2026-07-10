@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <time.h>
 
 #include "AppConfig.h"
 #include "CommandRouter.h"
@@ -21,6 +22,29 @@
 namespace
 {
   WebServer gServer(80);
+
+  String formatLocalNow()
+  {
+    const time_t now = time(nullptr);
+    if (now <= 0)
+    {
+      return String();
+    }
+
+    struct tm localTime;
+    if (!localtime_r(&now, &localTime))
+    {
+      return String();
+    }
+
+    char buffer[48];
+    if (strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S %Z", &localTime) == 0)
+    {
+      return String();
+    }
+
+    return String(buffer);
+  }
 
   String jsonEscape(const String &input)
   {
@@ -656,6 +680,8 @@ namespace
       </div>
 
       <div class="kv" style="margin-top:10px"><strong>Time Valid:</strong> <span id="timeValid">n/a</span></div>
+      <div class="kv"><strong>System Time:</strong> <span id="systemTime">n/a</span></div>
+      <div class="kv"><strong>System Epoch:</strong> <span id="systemEpoch">n/a</span></div>
       <div class="kv"><strong>Last Sync Status:</strong> <span id="timeSyncStatus">n/a</span></div>
       <div class="kv"><strong>Last Sync Epoch:</strong> <span id="timeSyncEpoch">n/a</span></div>
       <div class="kv"><strong>Schedule Slots:</strong> <span id="scheduleSlots">0/10</span></div>
@@ -751,6 +777,8 @@ namespace
       timeServerInput: document.getElementById('timeServerInput'),
       timeTimezoneInput: document.getElementById('timeTimezoneInput'),
       timeValid: document.getElementById('timeValid'),
+      systemTime: document.getElementById('systemTime'),
+      systemEpoch: document.getElementById('systemEpoch'),
       timeSyncStatus: document.getElementById('timeSyncStatus'),
       timeSyncEpoch: document.getElementById('timeSyncEpoch'),
       scheduleSlots: document.getElementById('scheduleSlots'),
@@ -1030,6 +1058,8 @@ namespace
       if (obj.server) ids.timeServerInput.value = obj.server;
       if (obj.timezone) ids.timeTimezoneInput.value = obj.timezone;
       ids.timeValid.textContent = obj.time_valid ? 'yes' : 'no';
+      ids.systemTime.textContent = obj.now_local || 'n/a';
+      ids.systemEpoch.textContent = typeof obj.now_epoch !== 'undefined' ? String(obj.now_epoch) : 'n/a';
       ids.timeSyncStatus.textContent = obj.last_sync_status || 'unknown';
       ids.timeSyncEpoch.textContent = typeof obj.last_sync_epoch !== 'undefined' ? String(obj.last_sync_epoch) : 'n/a';
       ids.scheduleSlots.textContent = `${obj.count || 0}/${obj.capacity || 10}`;
@@ -1613,6 +1643,9 @@ void WebControlServer::handleTimeStatus()
     return;
   }
 
+  const time_t now = time(nullptr);
+  const String nowLocal = formatLocalNow();
+
   String json = "{";
   json += "\"ok\":true,";
   json += "\"enabled\":";
@@ -1627,6 +1660,12 @@ void WebControlServer::handleTimeStatus()
   json += "\"time_valid\":";
   json += context.timeSync->isTimeValid() ? "true" : "false";
   json += ",";
+  json += "\"now_epoch\":";
+  json += static_cast<unsigned long>(now);
+  json += ",";
+  json += "\"now_local\":\"";
+  json += jsonEscape(nowLocal);
+  json += "\",";
   json += "\"last_sync_epoch\":";
   json += static_cast<unsigned long>(context.timeSync->lastSyncEpoch());
   json += ",";

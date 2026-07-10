@@ -9,6 +9,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <ctype.h>
+#include <time.h>
 
 #include "AppConfig.h"
 #include "ButtonManager.h"
@@ -40,6 +41,7 @@ ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
 
 unsigned long lastHeartbeat = 0;
+unsigned long lastTimestampLog = 0;
 unsigned long bootTime = 0;
 String serialBuffer;
 String deviceHostname = DEVICE_HOSTNAME_DEFAULT;
@@ -78,6 +80,7 @@ String getDiscoveryStateJson();
 String getDiscoveryCapabilitiesJson();
 String getDiscoveryModel();
 bool dispatchScheduledCommand(const String &command);
+void printTimestampLine();
 
 String sanitizeHostname(const String &requested)
 {
@@ -463,6 +466,55 @@ void heartbeat()
     Serial.println(mqttManager.isConnected() ? "OK" : "NO");
 }
 
+void printTimestampLine()
+{
+    const unsigned long nowMs = millis();
+    if (nowMs - lastTimestampLog < 15000)
+    {
+        return;
+    }
+
+    lastTimestampLog = nowMs;
+
+    const time_t now = time(nullptr);
+    if (now <= 0)
+    {
+        Serial.print("[TIME] unsynced");
+    }
+    else
+    {
+        struct tm localTime;
+        if (localtime_r(&now, &localTime))
+        {
+            char buffer[48];
+            if (strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S %Z", &localTime) > 0)
+            {
+                Serial.print("[TIME] ");
+                Serial.print(buffer);
+            }
+            else
+            {
+                Serial.print("[TIME] epoch=");
+                Serial.print(static_cast<unsigned long>(now));
+            }
+        }
+        else
+        {
+            Serial.print("[TIME] epoch=");
+            Serial.print(static_cast<unsigned long>(now));
+        }
+    }
+
+    Serial.print(" | uptime=");
+    Serial.print((nowMs - bootTime) / 1000);
+    Serial.print("s | relay=");
+    Serial.print(relayController.isOn() ? "ON" : "OFF");
+    Serial.print(" | wifi=");
+    Serial.print(WiFiManager::statusName(wifiManager.status()));
+    Serial.print(" | mqtt=");
+    Serial.println(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -571,5 +623,6 @@ void loop()
     lastDiscoveryWifiConnected = wifiManager.isConnected();
 
     indicatorLeds.update(millis(), relayController.isOn(), wifiManager.isConnected());
+    printTimestampLine();
     heartbeat();
 }
