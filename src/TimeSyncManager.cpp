@@ -37,8 +37,12 @@ void TimeSyncManager::loadSettings()
         return;
     }
 
-    ntpServer = preferences.getString(TIME_PREF_SERVER, TIME_SERVER_DEFAULT);
-    tzRule = preferences.getString(TIME_PREF_TZ, TIME_TZ_DEFAULT);
+    ntpServer = preferences.isKey(TIME_PREF_SERVER)
+                    ? preferences.getString(TIME_PREF_SERVER, TIME_SERVER_DEFAULT)
+                    : String(TIME_SERVER_DEFAULT);
+    tzRule = preferences.isKey(TIME_PREF_TZ)
+                 ? preferences.getString(TIME_PREF_TZ, TIME_TZ_DEFAULT)
+                 : String(TIME_TZ_DEFAULT);
     syncEnabled = preferences.getBool(TIME_PREF_ENABLED, true);
     nvsReady = true;
     preferences.end();

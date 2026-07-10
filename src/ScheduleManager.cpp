@@ -49,6 +49,11 @@ void ScheduleManager::loadSettings()
     for (uint8_t i = 0; i < SCHEDULE_MAX_EVENTS; i++)
     {
         const String key = slotKey(i);
+        if (!preferences.isKey(key.c_str()))
+        {
+            continue;
+        }
+
         const String line = preferences.getString(key.c_str(), "");
         if (line.length() == 0)
         {

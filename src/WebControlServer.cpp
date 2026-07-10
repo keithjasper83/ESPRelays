@@ -1380,6 +1380,8 @@ void WebControlServer::registerRoutes()
              { handleOtaCheck(); });
   gServer.on("/ota/update", HTTP_POST, [this]()
              { handleOtaUpdate(); });
+  gServer.on("/favicon.ico", HTTP_GET, []()
+             { gServer.send(204); });
   gServer.on("/wifi/scan", HTTP_GET, [this]()
              { handleWifiScan(); });
   gServer.on("/hostname", HTTP_POST, [this]()
