@@ -67,6 +67,7 @@ Short-term:
 - Better setup UX in the web panel with stronger validation and onboarding hints.
 - Richer diagnostics endpoint for easier field troubleshooting.
 - More contract tests around config and scheduling edge cases.
+- Auto-off from last-off style function (design and review only, not implemented yet).
 
 Mid-term:
 - Role-based web auth options and hardened security defaults.
@@ -77,6 +78,9 @@ Long-term:
 - Multi-device coordination patterns.
 - Optional cloud bridge modules while keeping local-first behavior.
 - Deployment profiles for home, lab, and light industrial scenarios.
+
+Engineering review backlog:
+- See [TODO_REVIEW.md](TODO_REVIEW.md) for nitpick-level code review and hardening items.
 
 ## Suggest Features And Improvements
 
