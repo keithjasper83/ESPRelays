@@ -48,11 +48,14 @@ String deviceHostname = DEVICE_HOSTNAME_DEFAULT;
 bool mdnsStarted = false;
 bool lastDiscoveryWifiConnected = false;
 bool deviceHostnameNvsReady = false;
+bool otaAutoScheduleEnabled = true;
+bool otaAutoScheduleNvsReady = false;
 
 namespace
 {
     constexpr char DEVICE_PREF_NAMESPACE[] = "device_cfg";
     constexpr char DEVICE_PREF_HOSTNAME[] = "hostname";
+    constexpr char DEVICE_PREF_OTA_AUTO_SCHEDULE[] = "ota_auto_sched";
 }
 
 const DiscoveryEndpoint DISCOVERY_ENDPOINTS[] = {
@@ -81,7 +84,9 @@ String getDiscoveryCapabilitiesJson();
 String getDiscoveryModel();
 bool dispatchScheduledCommand(const String &command);
 void printTimestampLine();
-void disableWeeklyOtaUpdateSchedule();
+void applyWeeklyOtaUpdateSchedule();
+bool getOtaAutoScheduleEnabled();
+bool setOtaAutoScheduleEnabled(bool enabled, String &error);
 
 String sanitizeHostname(const String &requested)
 {
@@ -144,11 +149,19 @@ void loadDeviceHostname()
         Serial.println("[NVS] Warning: device hostname preferences unavailable; using default hostname.");
         deviceHostname = DEVICE_HOSTNAME_DEFAULT;
         deviceHostnameNvsReady = false;
+        otaAutoScheduleEnabled = true;
+        otaAutoScheduleNvsReady = false;
         return;
     }
 
     deviceHostname = preferences.getString(DEVICE_PREF_HOSTNAME, DEVICE_HOSTNAME_DEFAULT);
     deviceHostnameNvsReady = true;
+
+    otaAutoScheduleEnabled = preferences.isKey(DEVICE_PREF_OTA_AUTO_SCHEDULE)
+                                 ? preferences.getBool(DEVICE_PREF_OTA_AUTO_SCHEDULE, true)
+                                 : true;
+    otaAutoScheduleNvsReady = true;
+
     preferences.end();
 
     if (deviceHostname.length() == 0)
@@ -234,7 +247,40 @@ String getNvsHealth()
     health += wifiManager.nvsReady() ? "ok" : "default";
     health += ", mqtt=";
     health += mqttManager.nvsReady() ? "ok" : "default";
+    health += ", ota_sched=";
+    health += otaAutoScheduleNvsReady ? "ok" : "default";
     return health;
+}
+
+bool getOtaAutoScheduleEnabled()
+{
+    return otaAutoScheduleEnabled;
+}
+
+bool setOtaAutoScheduleEnabled(bool enabled, String &error)
+{
+    Preferences preferences;
+    if (!preferences.begin(DEVICE_PREF_NAMESPACE, false))
+    {
+        otaAutoScheduleNvsReady = false;
+        error = "Failed to open device settings";
+        return false;
+    }
+
+    if (!preferences.putBool(DEVICE_PREF_OTA_AUTO_SCHEDULE, enabled))
+    {
+        preferences.end();
+        otaAutoScheduleNvsReady = false;
+        error = "Failed to persist OTA auto schedule setting";
+        return false;
+    }
+
+    preferences.end();
+
+    otaAutoScheduleEnabled = enabled;
+    otaAutoScheduleNvsReady = true;
+    applyWeeklyOtaUpdateSchedule();
+    return true;
 }
 
 bool updateDeviceHostname(const String &requested, String &error)
@@ -516,7 +562,7 @@ void printTimestampLine()
     Serial.println(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
 }
 
-void disableWeeklyOtaUpdateSchedule()
+void applyWeeklyOtaUpdateSchedule()
 {
     ScheduleManager::EventData weeklyOta;
     weeklyOta.enabled = true;
@@ -527,23 +573,40 @@ void disableWeeklyOtaUpdateSchedule()
     weeklyOta.command = "ota-update";
 
     uint8_t eventId = 0;
-    bool removed = false;
+    bool changed = false;
     String error;
-    if (!scheduleManager.removeRecurringEvent(weeklyOta, eventId, removed, error))
+
+    if (otaAutoScheduleEnabled)
+    {
+        if (!scheduleManager.ensureRecurringEvent(weeklyOta, eventId, changed, error))
+        {
+            Serial.print("[SCHEDULE] Weekly OTA schedule apply failed: ");
+            Serial.println(error.length() > 0 ? error : String("unknown error"));
+            return;
+        }
+
+        Serial.print("[SCHEDULE] Weekly OTA auto-update enabled (Monday 10:30, event #");
+        Serial.print(eventId);
+        Serial.print(") ");
+        Serial.println(changed ? "created" : "already present");
+        return;
+    }
+
+    if (!scheduleManager.removeRecurringEvent(weeklyOta, eventId, changed, error))
     {
         Serial.print("[SCHEDULE] Weekly OTA schedule cleanup failed: ");
         Serial.println(error.length() > 0 ? error : String("unknown error"));
         return;
     }
 
-    if (removed)
+    if (changed)
     {
-        Serial.print("[SCHEDULE] Removed weekly OTA auto-update event #");
+        Serial.print("[SCHEDULE] Weekly OTA auto-update disabled; removed event #");
         Serial.println(eventId);
     }
     else
     {
-        Serial.println("[SCHEDULE] No weekly OTA auto-update event found (already disabled)");
+        Serial.println("[SCHEDULE] Weekly OTA auto-update disabled; no event found");
     }
 }
 
@@ -593,6 +656,8 @@ void setup()
     webContext.setHostname = updateDeviceHostname;
     webContext.getMqttClientId = getMqttClientId;
     webContext.getNvsHealth = getNvsHealth;
+    webContext.getOtaAutoScheduleEnabled = getOtaAutoScheduleEnabled;
+    webContext.setOtaAutoScheduleEnabled = setOtaAutoScheduleEnabled;
     webControlServer.configure(webContext);
 
     indicatorLeds.begin();
@@ -612,7 +677,7 @@ void setup()
 
     timeSyncManager.begin();
     scheduleManager.begin();
-    disableWeeklyOtaUpdateSchedule();
+    applyWeeklyOtaUpdateSchedule();
     otaUpdateManager.begin();
 
     DiscoveryConfig discoveryConfig;

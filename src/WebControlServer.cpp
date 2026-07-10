@@ -133,6 +133,9 @@ namespace
     json += "\"ota_configured\":";
     json += context.ota != nullptr ? (context.ota->isConfigured() ? "true" : "false") : "false";
     json += ",";
+    json += "\"ota_auto_schedule_enabled\":";
+    json += context.getOtaAutoScheduleEnabled != nullptr ? (context.getOtaAutoScheduleEnabled() ? "true" : "false") : "true";
+    json += ",";
     json += "\"ota_release_info_url\":\"";
     json += jsonEscape(OTA_RELEASE_INFO_URL);
     json += "\",";
@@ -578,6 +581,15 @@ namespace
         </div>
         <div class="settingsRow">
           <div class="settingsLabel">
+            <span>Disable Weekly OTA Auto-Update</span>
+            <small>Default is enabled (Monday 10:30). Disable to stop automatic OTA schedule.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="otaAutoScheduleDisabledInput" type="checkbox" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
             <span>Wi-Fi SSID</span>
             <small>Tap a network below to fill this in.</small>
           </div>
@@ -775,6 +787,7 @@ namespace
       mqttHostInput: document.getElementById('mqttHostInput'),
       mqttPortInput: document.getElementById('mqttPortInput'),
       mqttDisabledInput: document.getElementById('mqttDisabledInput'),
+      otaAutoScheduleDisabledInput: document.getElementById('otaAutoScheduleDisabledInput'),
       timeEnabledInput: document.getElementById('timeEnabledInput'),
       timeServerInput: document.getElementById('timeServerInput'),
       timeTimezoneInput: document.getElementById('timeTimezoneInput'),
@@ -833,6 +846,7 @@ namespace
     };
 
     let currentMqttEnabled = true;
+  let currentOtaAutoScheduleEnabled = true;
     let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
 
     function setBusy(busy) {
@@ -898,6 +912,10 @@ namespace
       }
       if (typeof obj.ota_configured !== 'undefined') {
         ids.otaConfigured.textContent = obj.ota_configured ? 'yes' : 'no';
+      }
+      if (typeof obj.ota_auto_schedule_enabled !== 'undefined') {
+        currentOtaAutoScheduleEnabled = !!obj.ota_auto_schedule_enabled;
+        ids.otaAutoScheduleDisabledInput.checked = !currentOtaAutoScheduleEnabled;
       }
       if (obj.firmware && obj.firmware.version) {
         ids.otaCurrentVersion.textContent = obj.firmware.version;
@@ -1184,11 +1202,13 @@ namespace
       const mqttHost = ids.mqttHostInput.value.trim();
       const mqttPort = ids.mqttPortInput.value.trim();
       const mqttEnabled = !ids.mqttDisabledInput.checked;
+      const otaAutoScheduleEnabled = !ids.otaAutoScheduleDisabledInput.checked;
       const wifiSsid = ids.wifiSsidInput.value.trim();
       const wifiPass = ids.wifiPassInput.value;
       const mqttEnabledChanged = mqttEnabled !== currentMqttEnabled;
+      const otaAutoScheduleChanged = otaAutoScheduleEnabled !== currentOtaAutoScheduleEnabled;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged) {
+      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !otaAutoScheduleChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -1200,6 +1220,7 @@ namespace
         if (mqttHost) body.set('mqtt_host', mqttHost);
         if (mqttPort) body.set('mqtt_port', mqttPort);
         if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
+        if (otaAutoScheduleChanged) body.set('ota_auto_schedule_enabled', otaAutoScheduleEnabled ? '1' : '0');
         if (wifiSsid) body.set('wifi_ssid', wifiSsid);
         if (wifiPass.trim()) body.set('wifi_pass', wifiPass);
 
@@ -1594,6 +1615,25 @@ void WebControlServer::handleConfigSave()
       context.mqtt->setEnabled(parseBoolArg(mqttEnabledText));
       settingsSaved = true;
     }
+  }
+
+  const String otaAutoScheduleEnabledText = gServer.arg("ota_auto_schedule_enabled");
+  if (otaAutoScheduleEnabledText.length() > 0)
+  {
+    if (context.setOtaAutoScheduleEnabled == nullptr)
+    {
+      sendError(500, "OTA auto schedule setter is not available");
+      return;
+    }
+
+    String error;
+    if (!context.setOtaAutoScheduleEnabled(parseBoolArg(otaAutoScheduleEnabledText), error))
+    {
+      sendError(400, error.length() > 0 ? error.c_str() : "Failed to update OTA auto schedule setting");
+      return;
+    }
+
+    settingsSaved = true;
   }
 
   const String requestedHostname = gServer.arg("hostname");

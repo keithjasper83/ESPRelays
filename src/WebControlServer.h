@@ -20,6 +20,8 @@ using HostnameGetter = String (*)();
 using HostnameSetter = bool (*)(const String &hostname, String &error);
 using MqttClientIdGetter = String (*)();
 using NvsHealthGetter = String (*)();
+using OtaAutoScheduleGetter = bool (*)();
+using OtaAutoScheduleSetter = bool (*)(bool enabled, String &error);
 
 struct WebControlContext
 {
@@ -34,6 +36,8 @@ struct WebControlContext
     HostnameSetter setHostname = nullptr;
     MqttClientIdGetter getMqttClientId = nullptr;
     NvsHealthGetter getNvsHealth = nullptr;
+    OtaAutoScheduleGetter getOtaAutoScheduleEnabled = nullptr;
+    OtaAutoScheduleSetter setOtaAutoScheduleEnabled = nullptr;
 };
 
 class WebControlServer
