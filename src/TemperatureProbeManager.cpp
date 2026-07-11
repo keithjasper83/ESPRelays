@@ -18,6 +18,7 @@ namespace
     constexpr char TEMP_PREF_HIGH_VALID[] = "high_valid";
     constexpr char TEMP_PREF_HIGH_RAW[] = "high_raw";
     constexpr char TEMP_PREF_HIGH_TEMP[] = "high_temp";
+    constexpr char TEMP_PREF_TRIM_OFFSET[] = "trim_ofs";
 
     bool isProbeInValidRange(int rawValue)
     {
@@ -46,6 +47,7 @@ void TemperatureProbeManager::loadCalibration()
     highPoint.valid = preferences.getBool(TEMP_PREF_HIGH_VALID, false);
     highPoint.raw = preferences.getInt(TEMP_PREF_HIGH_RAW, -1);
     highPoint.tempC = preferences.getFloat(TEMP_PREF_HIGH_TEMP, NAN);
+    trimOffset = preferences.getFloat(TEMP_PREF_TRIM_OFFSET, 0.0f);
 
     preferences.end();
     calibrationLoaded = true;
@@ -66,6 +68,7 @@ bool TemperatureProbeManager::persistCalibration()
     preferences.putBool(TEMP_PREF_HIGH_VALID, highPoint.valid);
     preferences.putInt(TEMP_PREF_HIGH_RAW, highPoint.raw);
     preferences.putFloat(TEMP_PREF_HIGH_TEMP, highPoint.tempC);
+    preferences.putFloat(TEMP_PREF_TRIM_OFFSET, trimOffset);
     preferences.end();
     return true;
 }
@@ -102,7 +105,7 @@ float TemperatureProbeManager::calculateTemperatureC(int raw) const
     }
 
     const float ratio = (static_cast<float>(raw) - lowRaw) / (highRaw - lowRaw);
-    return lowPoint.tempC + ratio * (highPoint.tempC - lowPoint.tempC);
+    return lowPoint.tempC + ratio * (highPoint.tempC - lowPoint.tempC) + trimOffset;
 }
 
 void TemperatureProbeManager::begin()
@@ -195,6 +198,11 @@ float TemperatureProbeManager::highPointTempC() const
     return highPoint.tempC;
 }
 
+float TemperatureProbeManager::trimOffsetC() const
+{
+    return trimOffset;
+}
+
 bool TemperatureProbeManager::captureLow(float knownTempC, String &error)
 {
     loadCalibration();
@@ -266,6 +274,26 @@ bool TemperatureProbeManager::resetCalibration(String &error)
     lowPoint = {};
     highPoint = {};
     return persistCalibration();
+}
+
+bool TemperatureProbeManager::setTrimOffsetC(float offsetC, String &error)
+{
+    loadCalibration();
+
+    if (isnan(offsetC) || offsetC < -20.0f || offsetC > 20.0f)
+    {
+        error = "Trim offset must be between -20.0 and 20.0 C";
+        return false;
+    }
+
+    trimOffset = offsetC;
+    if (!persistCalibration())
+    {
+        error = "Failed to persist trim offset";
+        return false;
+    }
+
+    return true;
 }
 
 bool TemperatureProbeManager::shouldRunTemperatureDependentFunctions() const

@@ -1,15 +1,6 @@
-/*
- * SPDX-License-Identifier: Apache-2.0
- * Copyright (c) 2026 Keith Jasper
- * Contact: https://github.com/keithjasper83/ESPRelays/issues
- */
-
 #include "MqttManager.h"
 
-#include <math.h>
 #include <Preferences.h>
-
-#include "AppConfig.h"
 
 extern bool debugLogging;
 
@@ -19,54 +10,47 @@ namespace
     constexpr char MQTT_PREF_HOST[] = "host";
     constexpr char MQTT_PREF_PORT[] = "port";
     constexpr char MQTT_PREF_ENABLED[] = "enabled";
+    constexpr char MQTT_PREF_USER[] = "user";
+    constexpr char MQTT_PREF_PASS[] = "pass";
+    constexpr unsigned long MQTT_RETRY_MS = 5000;
     constexpr unsigned long MQTT_TELEMETRY_INTERVAL_MS = 60000;
-}
 
-namespace
-{
-    MqttManager *gMqttManager = nullptr;
-
-    void mqttCallbackThunk(char *topic, byte *payload, unsigned int length)
+    bool parseOnOff(const String &message, bool &on)
     {
-        if (gMqttManager != nullptr)
+        String normalized = message;
+        normalized.trim();
+        normalized.toLowerCase();
+
+        if (normalized == "on" || normalized == "1" || normalized == "true")
         {
-            gMqttManager->handleMessage(topic, payload, length);
+            on = true;
+            return true;
         }
-    }
-} // namespace
 
-const char *MqttManager::stateName(int state)
-{
-    switch (state)
-    {
-    case MQTT_CONNECTION_TIMEOUT:
-        return "MQTT_CONNECTION_TIMEOUT";
-    case MQTT_CONNECTION_LOST:
-        return "MQTT_CONNECTION_LOST";
-    case MQTT_CONNECT_FAILED:
-        return "MQTT_CONNECT_FAILED";
-    case MQTT_DISCONNECTED:
-        return "MQTT_DISCONNECTED";
-    case MQTT_CONNECTED:
-        return "MQTT_CONNECTED";
-    case MQTT_CONNECT_BAD_PROTOCOL:
-        return "MQTT_CONNECT_BAD_PROTOCOL";
-    case MQTT_CONNECT_BAD_CLIENT_ID:
-        return "MQTT_CONNECT_BAD_CLIENT_ID";
-    case MQTT_CONNECT_UNAVAILABLE:
-        return "MQTT_CONNECT_UNAVAILABLE";
-    case MQTT_CONNECT_BAD_CREDENTIALS:
-        return "MQTT_CONNECT_BAD_CREDENTIALS";
-    case MQTT_CONNECT_UNAUTHORIZED:
-        return "MQTT_CONNECT_UNAUTHORIZED";
-    default:
-        return "UNKNOWN";
+        if (normalized == "off" || normalized == "0" || normalized == "false")
+        {
+            on = false;
+            return true;
+        }
+
+        return false;
     }
 }
 
 MqttManager::MqttManager()
     : mqtt(wifiClient)
 {
+}
+
+void MqttManager::begin()
+{
+    loadSettings();
+    rebuildTopics();
+
+    mqtt.setServer(mqttHost.c_str(), mqttPort);
+    mqtt.setCallback([this](char *topic, byte *payload, unsigned int length) {
+        this->handleMessage(topic, payload, length);
+    });
 }
 
 void MqttManager::loadSettings()
@@ -77,11 +61,13 @@ void MqttManager::loadSettings()
     }
 
     Preferences preferences;
-    if (!preferences.begin(MQTT_PREF_NAMESPACE, false))
+    if (!preferences.begin(MQTT_PREF_NAMESPACE, true))
     {
-        Serial.println("[NVS] Warning: MQTT preferences unavailable; using compiled defaults.");
         mqttHost = MQTT_HOST;
         mqttPort = MQTT_PORT;
+        mqttUser = MQTT_USER;
+        mqttPass = MQTT_PASS;
+        mqttEnabled = true;
         nvsReadyFlag = false;
         settingsLoaded = true;
         return;
@@ -90,39 +76,40 @@ void MqttManager::loadSettings()
     mqttHost = preferences.getString(MQTT_PREF_HOST, MQTT_HOST);
     mqttPort = preferences.getInt(MQTT_PREF_PORT, MQTT_PORT);
     mqttEnabled = preferences.getBool(MQTT_PREF_ENABLED, true);
+    mqttUser = preferences.getString(MQTT_PREF_USER, MQTT_USER);
+    mqttPass = preferences.getString(MQTT_PREF_PASS, MQTT_PASS);
     nvsReadyFlag = true;
     preferences.end();
-
-    if (mqttHost.length() == 0)
-    {
-        mqttHost = MQTT_HOST;
-    }
 
     settingsLoaded = true;
 }
 
 void MqttManager::rebuildTopics()
 {
-    topicCmd = "home/" + mqttClientId + "/command";
-    topicState = "home/" + mqttClientId + "/state";
-    topicAvail = "home/" + mqttClientId + "/availability";
-    topicStatus = "home/" + mqttClientId + "/status";
-    topicTemp = "home/" + mqttClientId + "/temperature";
+    topicRoot = "home/" + mqttClientId;
+    topicOpsWildcard = topicRoot + "/+/+";
+    topicRelayState = topicRoot + "/relay/state";
+    topicLed1State = topicRoot + "/led1/state";
+    topicLed2State = topicRoot + "/led2/state";
+    topicDeviceState = topicRoot + "/device/state";
+    topicAvail = topicRoot + "/availability";
+    topicStatus = topicRoot + "/status";
+    topicTemp = topicRoot + "/temperature";
 }
 
-void MqttManager::begin()
+void MqttManager::setOperationHandler(OperationHandler handler)
 {
-    gMqttManager = this;
-    mqttClientId = DEVICE_HOSTNAME_DEFAULT;
-    loadSettings();
-    rebuildTopics();
-    mqtt.setServer(mqttHost.c_str(), mqttPort);
-    mqtt.setCallback(mqttCallbackThunk);
+    operationHandler = handler;
 }
 
-void MqttManager::setCommandHandler(CommandHandler handler)
+void MqttManager::setElementHandlers(BoolGetter relayGetter, BoolSetter led1Setter, BoolGetter led1Getter, BoolSetter led2Setter, BoolGetter led2Getter, StringGetter deviceNameGetter)
 {
-    commandHandler = handler;
+    getRelayState = relayGetter;
+    setLed1State = led1Setter;
+    getLed1State = led1Getter;
+    setLed2State = led2Setter;
+    getLed2State = led2Getter;
+    getDeviceName = deviceNameGetter;
 }
 
 void MqttManager::setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter)
@@ -133,42 +120,52 @@ void MqttManager::setTemperatureTelemetryGetters(BoolGetter probePresentGetter, 
     getCurrentProbeTempC = currentTempCGetter;
 }
 
+const char *MqttManager::stateName(int state)
+{
+    switch (state)
+    {
+    case MQTT_CONNECTION_TIMEOUT:
+        return "CONNECTION_TIMEOUT";
+    case MQTT_CONNECTION_LOST:
+        return "CONNECTION_LOST";
+    case MQTT_CONNECT_FAILED:
+        return "CONNECT_FAILED";
+    case MQTT_DISCONNECTED:
+        return "DISCONNECTED";
+    case MQTT_CONNECTED:
+        return "CONNECTED";
+    case MQTT_CONNECT_BAD_PROTOCOL:
+        return "BAD_PROTOCOL";
+    case MQTT_CONNECT_BAD_CLIENT_ID:
+        return "BAD_CLIENT_ID";
+    case MQTT_CONNECT_UNAVAILABLE:
+        return "UNAVAILABLE";
+    case MQTT_CONNECT_BAD_CREDENTIALS:
+        return "BAD_CREDENTIALS";
+    case MQTT_CONNECT_UNAUTHORIZED:
+        return "UNAUTHORIZED";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 void MqttManager::setClientId(const String &clientId)
 {
-    if (clientId.length() == 0 || clientId == mqttClientId)
-    {
-        return;
-    }
-
     mqttClientId = clientId;
     rebuildTopics();
-    lastMqttRetry = 0;
-
-    if (mqtt.connected())
-    {
-        mqtt.disconnect();
-    }
 }
 
 void MqttManager::setServer(const String &host, int port)
 {
-    String cleanHost = host;
-    cleanHost.trim();
-
-    if (cleanHost.length() == 0)
-    {
-        return;
-    }
-
     loadSettings();
 
-    mqttHost = cleanHost;
-    mqttPort = port > 0 ? port : MQTT_PORT;
+    mqttHost = host;
+    mqttPort = port;
 
     Preferences preferences;
     if (!preferences.begin(MQTT_PREF_NAMESPACE, false))
     {
-        Serial.println("[NVS] Warning: failed to save MQTT settings.");
+        Serial.println("[NVS] Warning: failed to save MQTT host/port.");
         nvsReadyFlag = false;
         return;
     }
@@ -188,33 +185,32 @@ void MqttManager::setServer(const String &host, int port)
     lastMqttRetry = 0;
 }
 
-void MqttManager::setEnabled(bool enabled)
+void MqttManager::setCredentials(const String &username, const String &password)
 {
     loadSettings();
 
-    mqttEnabled = enabled;
+    mqttUser = username;
+    mqttPass = password;
 
     Preferences preferences;
     if (!preferences.begin(MQTT_PREF_NAMESPACE, false))
     {
-        Serial.println("[NVS] Warning: failed to save MQTT enabled state.");
+        Serial.println("[NVS] Warning: failed to save MQTT credentials.");
         nvsReadyFlag = false;
         return;
     }
 
-    preferences.putBool(MQTT_PREF_ENABLED, mqttEnabled);
+    preferences.putString(MQTT_PREF_USER, mqttUser);
+    preferences.putString(MQTT_PREF_PASS, mqttPass);
     nvsReadyFlag = true;
     preferences.end();
 
-    if (!mqttEnabled && mqtt.connected())
+    if (mqtt.connected())
     {
         mqtt.disconnect();
     }
-}
 
-bool MqttManager::isEnabled() const
-{
-    return mqttEnabled;
+    lastMqttRetry = 0;
 }
 
 String MqttManager::clientId() const
@@ -232,6 +228,51 @@ int MqttManager::serverPort() const
     return mqttPort;
 }
 
+String MqttManager::username() const
+{
+    return mqttUser;
+}
+
+String MqttManager::password() const
+{
+    return mqttPass;
+}
+
+bool MqttManager::passwordSet() const
+{
+    return mqttPass.length() > 0;
+}
+
+void MqttManager::setEnabled(bool enabled)
+{
+    loadSettings();
+    mqttEnabled = enabled;
+
+    Preferences preferences;
+    if (!preferences.begin(MQTT_PREF_NAMESPACE, false))
+    {
+        Serial.println("[NVS] Warning: failed to save MQTT enabled state.");
+        nvsReadyFlag = false;
+    }
+    else
+    {
+        preferences.putBool(MQTT_PREF_ENABLED, mqttEnabled);
+        nvsReadyFlag = true;
+        preferences.end();
+    }
+
+    if (!mqttEnabled && mqtt.connected())
+    {
+        mqtt.publish(topicAvail.c_str(), "offline", true);
+        mqtt.disconnect();
+    }
+}
+
+bool MqttManager::isEnabled() const
+{
+    return mqttEnabled;
+}
+
 bool MqttManager::nvsReady() const
 {
     return nvsReadyFlag;
@@ -247,12 +288,36 @@ int MqttManager::state()
     return mqtt.state();
 }
 
+void MqttManager::publishElementState(const String &element, const String &value)
+{
+    if (!mqttEnabled || !mqtt.connected())
+    {
+        return;
+    }
+
+    const String topic = topicRoot + "/" + element + "/state";
+    mqtt.publish(topic.c_str(), value.c_str(), true);
+}
+
 void MqttManager::publishRelayState(bool relayOn)
 {
-    if (mqttEnabled && mqtt.connected())
-    {
-        mqtt.publish(topicState.c_str(), relayOn ? "ON" : "OFF", true);
-    }
+    publishElementState("relay", relayOn ? "on" : "off");
+}
+
+void MqttManager::publishLed1State(bool on)
+{
+    publishElementState("led1", on ? "on" : "off");
+}
+
+void MqttManager::publishLed2State(bool on)
+{
+    publishElementState("led2", on ? "on" : "off");
+}
+
+void MqttManager::publishDeviceState()
+{
+    const String name = getDeviceName != nullptr ? getDeviceName() : String(mqttClientId);
+    publishElementState("device", name);
 }
 
 void MqttManager::publishStatusAndTemperature(bool relayOn)
@@ -262,89 +327,113 @@ void MqttManager::publishStatusAndTemperature(bool relayOn)
         return;
     }
 
-    String statusJson = "{";
-    statusJson += "\"relay\":\"";
-    statusJson += relayOn ? "on" : "off";
-    statusJson += "\",";
-    statusJson += "\"wifi\":\"";
-    statusJson += WiFi.status() == WL_CONNECTED ? "connected" : "disconnected";
-    statusJson += "\",";
-    statusJson += "\"uptime_ms\":";
-    statusJson += millis();
-    statusJson += "}";
+    const char *relayStatus = relayOn ? "ON" : "OFF";
+    const String statusPayload = String("{\"relay\":\"") + relayStatus + "\",\"uptime\":" + String(millis() / 1000) + "}";
+    mqtt.publish(topicStatus.c_str(), statusPayload.c_str(), true);
 
-    mqtt.publish(topicStatus.c_str(), statusJson.c_str(), true);
-
-    const bool probePresent = getProbePresent != nullptr ? getProbePresent() : false;
-    const int probeRaw = getProbeRaw != nullptr ? getProbeRaw() : -1;
-    const int currentProbeRaw = getCurrentProbeRaw != nullptr ? getCurrentProbeRaw() : -1;
-    const float probeTempC = getCurrentProbeTempC != nullptr ? getCurrentProbeTempC() : NAN;
-    const float chipTempC = temperatureRead();
-
-    String tempJson = "{";
-    tempJson += "\"probe_present\":";
-    tempJson += probePresent ? "true" : "false";
-    tempJson += ",\"probe_raw\":";
-    tempJson += probeRaw;
-    tempJson += ",\"probe_current_raw\":";
-    tempJson += currentProbeRaw;
-    tempJson += ",\"probe_temperature_c\":";
-    if (isnan(probeTempC))
+    if (getProbePresent != nullptr && getCurrentProbeRaw != nullptr && getCurrentProbeTempC != nullptr)
     {
-        tempJson += "null";
+        const bool probePresent = getProbePresent();
+        if (probePresent)
+        {
+            const int raw = getCurrentProbeRaw();
+            const float tempC = getCurrentProbeTempC();
+            const String tempPayload = String("{\"adc_raw\":") + String(raw) + String(",\"temp_c\":") + String(tempC, 2) + "}";
+            mqtt.publish(topicTemp.c_str(), tempPayload.c_str(), true);
+        }
     }
-    else
-    {
-        tempJson += String(probeTempC, 2);
-    }
-    tempJson += ",\"esp_temperature_c\":";
-    if (isnan(chipTempC))
-    {
-        tempJson += "null";
-    }
-    else
-    {
-        tempJson += String(chipTempC, 1);
-    }
-    tempJson += "}";
-
-    mqtt.publish(topicTemp.c_str(), tempJson.c_str(), true);
 }
 
 void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
 {
     String message;
-
-    for (unsigned int i = 0; i < length; i++)
+    message.reserve(length);
+    for (unsigned int i = 0; i < length; ++i)
     {
         message += static_cast<char>(payload[i]);
     }
 
-    if (debugLogging)
+    const String topicStr(topic);
+    const String prefix = topicRoot + "/";
+    if (!topicStr.startsWith(prefix))
     {
-        Serial.print("MQTT command on ");
-        Serial.print(topic);
-        Serial.print(": ");
-        Serial.println(message);
+        return;
     }
 
-    if (commandHandler != nullptr)
+    const String suffix = topicStr.substring(prefix.length());
+    const int sep = suffix.lastIndexOf('/');
+    if (sep <= 0 || sep >= suffix.length() - 1)
     {
-        commandHandler(message);
+        return;
+    }
+
+    String element = suffix.substring(0, sep);
+    String operation = suffix.substring(sep + 1);
+    element.trim();
+    operation.trim();
+    element.toLowerCase();
+    operation.toLowerCase();
+
+    if (operationHandler != nullptr)
+    {
+        operationHandler(element, operation, message);
+    }
+
+    if (operation == "set")
+    {
+        if (element == "led1" && setLed1State != nullptr)
+        {
+            bool on = false;
+            if (parseOnOff(message, on) && setLed1State(on))
+            {
+                publishLed1State(on);
+            }
+            return;
+        }
+
+        if (element == "led2" && setLed2State != nullptr)
+        {
+            bool on = false;
+            if (parseOnOff(message, on) && setLed2State(on))
+            {
+                publishLed2State(on);
+            }
+            return;
+        }
+
+        return;
+    }
+
+    if (operation == "get" || operation == "state")
+    {
+        if (element == "relay" && getRelayState != nullptr)
+        {
+            publishRelayState(getRelayState());
+            return;
+        }
+
+        if (element == "led1" && getLed1State != nullptr)
+        {
+            publishLed1State(getLed1State());
+            return;
+        }
+
+        if (element == "led2" && getLed2State != nullptr)
+        {
+            publishLed2State(getLed2State());
+            return;
+        }
+
+        if (element == "device")
+        {
+            publishDeviceState();
+            return;
+        }
     }
 }
 
 void MqttManager::connectIfNeeded(bool relayOn)
 {
-    if (!mqttEnabled)
-    {
-        if (mqtt.connected())
-        {
-            mqtt.disconnect();
-        }
-        return;
-    }
-
     if (mqtt.connected())
     {
         mqtt.loop();
@@ -352,73 +441,73 @@ void MqttManager::connectIfNeeded(bool relayOn)
     }
 
     const unsigned long now = millis();
-    if (now - lastMqttRetry < 5000)
+    if (now - lastMqttRetry < MQTT_RETRY_MS)
     {
         return;
     }
 
     lastMqttRetry = now;
 
-    if (debugLogging)
-    {
-        Serial.println();
-        Serial.println("========== MQTT CONNECT ==========");
-        Serial.print("MQTT host: ");
-        Serial.print(mqttHost);
-        Serial.print(":");
-        Serial.println(mqttPort);
-        Serial.print("Client ID: ");
-        Serial.println(mqttClientId);
-        Serial.print("Topic CMD: ");
-        Serial.println(topicCmd);
-        Serial.print("Topic STATE: ");
-        Serial.println(topicState);
-        Serial.print("Topic AVAIL: ");
-        Serial.println(topicAvail);
-    }
-
-    const bool connected = mqtt.connect(
-        mqttClientId.c_str(),
-        topicAvail.c_str(),
-        1,
-        true,
-        "offline");
+    const bool useCredentials = mqttUser.length() > 0;
+    const bool connected = useCredentials
+                               ? mqtt.connect(
+                                     mqttClientId.c_str(),
+                                     mqttUser.c_str(),
+                                     mqttPass.c_str(),
+                                     topicAvail.c_str(),
+                                     1,
+                                     true,
+                                     "offline")
+                               : mqtt.connect(
+                                     mqttClientId.c_str(),
+                                     topicAvail.c_str(),
+                                     1,
+                                     true,
+                                     "offline");
 
     if (connected)
     {
-        if (debugLogging)
-        {
-            Serial.println("MQTT connected.");
-        }
-
-        const bool primarySubscribed = mqtt.subscribe(topicCmd.c_str());
+        const bool subscribed = mqtt.subscribe(topicOpsWildcard.c_str());
 
         mqtt.publish(topicAvail.c_str(), "online", true);
-        mqtt.publish(topicState.c_str(), relayOn ? "ON" : "OFF", true);
+        publishRelayState(relayOn);
+        if (getLed1State != nullptr)
+        {
+            publishLed1State(getLed1State());
+        }
+        if (getLed2State != nullptr)
+        {
+            publishLed2State(getLed2State());
+        }
+        publishDeviceState();
         publishStatusAndTemperature(relayOn);
         lastTelemetryPublish = millis();
         mqtt.loop();
 
         if (debugLogging)
         {
+            Serial.println("==================================");
+            Serial.println("MQTT connected");
+            Serial.print("Broker: ");
+            Serial.print(mqttHost);
+            Serial.print(":");
+            Serial.println(mqttPort);
             Serial.print("Subscribed: ");
-            Serial.println(topicCmd);
-            if (!primarySubscribed)
+            Serial.println(topicOpsWildcard);
+            if (!subscribed)
             {
                 Serial.println("Warning: MQTT subscription failed.");
             }
+            Serial.println("==================================");
         }
-    }
-    else if (debugLogging)
-    {
-        Serial.print("MQTT failed. State code: ");
-        Serial.println(mqtt.state());
-        Serial.print("MQTT failed. State text: ");
-        Serial.println(stateName(mqtt.state()));
+        return;
     }
 
     if (debugLogging)
     {
+        Serial.println("==================================");
+        Serial.print("MQTT connect failed, rc=");
+        Serial.println(mqtt.state());
         Serial.println("==================================");
     }
 }

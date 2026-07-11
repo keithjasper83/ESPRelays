@@ -112,6 +112,12 @@ namespace
     json += "\"mqtt_enabled\":";
     json += context.mqtt != nullptr ? (context.mqtt->isEnabled() ? "true" : "false") : "true";
     json += ",";
+    json += "\"mqtt_username\":\"";
+    json += jsonEscape(context.mqtt != nullptr ? context.mqtt->username() : String(MQTT_USER));
+    json += "\",";
+    json += "\"mqtt_password_set\":";
+    json += context.mqtt != nullptr ? (context.mqtt->passwordSet() ? "true" : "false") : (String(MQTT_PASS).length() > 0 ? "true" : "false");
+    json += ",";
     json += "\"time_enabled\":";
     json += context.timeSync != nullptr ? (context.timeSync->isEnabled() ? "true" : "false") : "true";
     json += ",";
@@ -218,6 +224,16 @@ namespace
     json += "\"temperature_calibration_ready\":";
     json += context.getTemperatureCalibrationReady != nullptr ? (context.getTemperatureCalibrationReady() ? "true" : "false") : "false";
     json += ",";
+    json += "\"temperature_trim_offset_c\":";
+    if (context.getTemperatureTrimOffsetC != nullptr)
+    {
+      json += String(context.getTemperatureTrimOffsetC(), 2);
+    }
+    else
+    {
+      json += "0.00";
+    }
+    json += ",";
     json += "\"nvs_health\":\"";
     json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
     json += "\"";
@@ -238,6 +254,7 @@ namespace
     const int highRaw = context.getHighCalibrationRaw != nullptr ? context.getHighCalibrationRaw() : -1;
     const float lowTempC = context.getLowCalibrationTempC != nullptr ? context.getLowCalibrationTempC() : NAN;
     const float highTempC = context.getHighCalibrationTempC != nullptr ? context.getHighCalibrationTempC() : NAN;
+    const float trimOffsetC = context.getTemperatureTrimOffsetC != nullptr ? context.getTemperatureTrimOffsetC() : 0.0f;
 
     String json = "{";
     json += "\"ok\":true,";
@@ -251,6 +268,8 @@ namespace
     json += isnan(currentC) ? "null" : String(currentC, 2);
     json += ",\"calibration_ready\":";
     json += ready ? "true" : "false";
+    json += ",\"trim_offset_c\":";
+    json += String(trimOffsetC, 2);
     json += ",\"low_point\":{";
     json += "\"valid\":";
     json += lowValid ? "true" : "false";
@@ -266,6 +285,20 @@ namespace
     json += ",\"temp_c\":";
     json += isnan(highTempC) ? "null" : String(highTempC, 2);
     json += "}}";
+    return json;
+  }
+
+  String buildLedTestJson(const WebControlContext &context, const char *command, const char *message)
+  {
+    String json = "{\"ok\":true,\"command\":\"";
+    json += command;
+    json += "\",\"message\":\"";
+    json += message;
+    json += "\",\"relay_led_test_active\":";
+    json += context.getRelayLedTestActive != nullptr ? (context.getRelayLedTestActive() ? "true" : "false") : "false";
+    json += ",\"wifi_led_test_active\":";
+    json += context.getWifiLedTestActive != nullptr ? (context.getWifiLedTestActive() ? "true" : "false") : "false";
+    json += "}";
     return json;
   }
 
@@ -324,6 +357,39 @@ namespace
     month = static_cast<uint8_t>(parsedMonth);
     day = static_cast<uint8_t>(parsedDay);
     return true;
+  }
+
+  bool parseCalibrationTemperatureC(const String &valueText, const String &unitText, float &tempC, String &error)
+  {
+    const float parsed = valueText.toFloat();
+    if (isnan(parsed))
+    {
+      error = "Invalid temperature value";
+      return false;
+    }
+
+    String unit = unitText;
+    unit.trim();
+    unit.toLowerCase();
+    if (unit.length() == 0)
+    {
+      unit = "c";
+    }
+
+    if (unit == "c")
+    {
+      tempC = parsed;
+      return true;
+    }
+
+    if (unit == "f")
+    {
+      tempC = (parsed - 32.0f) * (5.0f / 9.0f);
+      return true;
+    }
+
+    error = "temp_unit must be C or F";
+    return false;
   }
 
   const char WEB_UI[] PROGMEM = R"HTML(
@@ -641,6 +707,17 @@ namespace
         <button id="btnToggle" class="toggle">TOGGLE</button>
         <button id="btnRefresh" class="refresh">REFRESH STATUS</button>
       </div>
+      <div class="stackSection">
+        <div class="sectionTitle">LED Test Controls</div>
+        <p class="muted">Runs the selected LED test for 5 seconds, then returns control to normal firmware behavior.</p>
+        <div class="grid">
+          <button id="btnRelayLedTest" class="refresh">TEST RELAY LED</button>
+          <button id="btnWifiLedTest" class="refresh">TEST WI-FI LED</button>
+          <button id="btnAllLedTests" class="toggle">TEST BOTH LEDS</button>
+        </div>
+        <div class="kv" style="margin-top:10px"><strong>Relay LED test active:</strong> <span id="relayLedTestActive">no</span></div>
+        <div class="kv"><strong>Wi-Fi LED test active:</strong> <span id="wifiLedTestActive">no</span></div>
+      </div>
       <div class="settingsGroup stackSection">
         <div class="settingsRow">
           <div class="settingsLabel">
@@ -667,6 +744,24 @@ namespace
           </div>
           <div class="settingsValue">
             <input id="mqttPortInput" type="text" placeholder="1883" inputmode="numeric" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>MQTT Username</span>
+            <small>Leave empty for anonymous broker access.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="mqttUsernameInput" type="text" placeholder="mqtt-user" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>MQTT Password</span>
+            <small>Leave empty to keep current password.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="mqttPasswordInput" type="password" placeholder="stored password" />
           </div>
         </div>
         <div class="settingsRow">
@@ -730,6 +825,8 @@ namespace
       <div class="kv"><strong>MQTT Host:</strong> <span id="mqttHost">n/a</span></div>
       <div class="kv"><strong>MQTT Port:</strong> <span id="mqttPort">n/a</span></div>
       <div class="kv"><strong>MQTT Enabled:</strong> <span id="mqttEnabled">n/a</span></div>
+      <div class="kv"><strong>MQTT Username:</strong> <span id="mqttUsername">n/a</span></div>
+      <div class="kv"><strong>MQTT Password Set:</strong> <span id="mqttPasswordSet">n/a</span></div>
       <div class="kv"><strong>Relay Auto-Off Minutes:</strong> <span id="relayAutoOffMinutes">n/a</span></div>
       <div class="kv"><strong>Relay Auto-Off Armed:</strong> <span id="relayAutoOffArmed">n/a</span></div>
       <div class="kv"><strong>Relay Auto-Off Remaining:</strong> <span id="relayAutoOffRemaining">n/a</span></div>
@@ -768,11 +865,24 @@ namespace
       <div class="kv"><strong>Live raw ADC:</strong> <span id="tempCalLiveRaw">n/a</span></div>
       <div class="kv"><strong>Computed temperature:</strong> <span id="tempCalComputedC">n/a</span></div>
       <div class="kv"><strong>Calibration ready:</strong> <span id="tempCalReady">n/a</span></div>
+      <div class="kv"><strong>Trim offset:</strong> <span id="tempCalTrimOffset">0.00 C</span></div>
       <div class="settingsGroup stackSection">
         <div class="settingsRow">
           <div class="settingsLabel">
+            <span>Calibration Input Unit</span>
+            <small>Choose the unit used by your reference thermometer.</small>
+          </div>
+          <div class="settingsValue">
+            <select id="tempCalUnitInput">
+              <option value="c" selected>Celsius (C)</option>
+              <option value="f">Fahrenheit (F)</option>
+            </select>
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
             <span>Low Reference Temperature (C)</span>
-            <small>Known real temperature when capturing low point.</small>
+            <small>Known real temperature when capturing low point (converted to C internally).</small>
           </div>
           <div class="settingsValue">
             <input id="tempLowInput" type="text" placeholder="30.0" inputmode="decimal" />
@@ -781,7 +891,7 @@ namespace
         <div class="settingsRow">
           <div class="settingsLabel">
             <span>High Reference Temperature (C)</span>
-            <small>Known real temperature when capturing high point.</small>
+            <small>Known real temperature when capturing high point (converted to C internally).</small>
           </div>
           <div class="settingsValue">
             <input id="tempHighInput" type="text" placeholder="40.0" inputmode="decimal" />
@@ -792,6 +902,15 @@ namespace
             <button id="btnTempCaptureLow" class="save">CAPTURE LOW</button>
             <button id="btnTempCaptureHigh" class="save">CAPTURE HIGH</button>
             <button id="btnTempResetCal" class="off">RESET CALIBRATION</button>
+          </div>
+        </div>
+        <div class="settingsRow settingsRow--action">
+          <div class="row">
+            <button id="btnTempTrimMinus1" class="off">TRIM -1.0 C</button>
+            <button id="btnTempTrimMinus02" class="off">TRIM -0.2 C</button>
+            <button id="btnTempTrimPlus02" class="save">TRIM +0.2 C</button>
+            <button id="btnTempTrimPlus1" class="save">TRIM +1.0 C</button>
+            <button id="btnTempTrimReset" class="refresh">TRIM RESET</button>
           </div>
         </div>
       </div>
@@ -944,9 +1063,13 @@ namespace
       relayStateBadgeText: document.getElementById('relayStateBadgeText'),
       mqttHostInput: document.getElementById('mqttHostInput'),
       mqttPortInput: document.getElementById('mqttPortInput'),
+      mqttUsernameInput: document.getElementById('mqttUsernameInput'),
+      mqttPasswordInput: document.getElementById('mqttPasswordInput'),
       mqttDisabledInput: document.getElementById('mqttDisabledInput'),
       otaAutoScheduleDisabledInput: document.getElementById('otaAutoScheduleDisabledInput'),
       relayAutoOffMinutesInput: document.getElementById('relayAutoOffMinutesInput'),
+      relayLedTestActive: document.getElementById('relayLedTestActive'),
+      wifiLedTestActive: document.getElementById('wifiLedTestActive'),
       timeEnabledInput: document.getElementById('timeEnabledInput'),
       timeServerInput: document.getElementById('timeServerInput'),
       timeTimezoneInput: document.getElementById('timeTimezoneInput'),
@@ -973,6 +1096,8 @@ namespace
       mqttHost: document.getElementById('mqttHost'),
       mqttPort: document.getElementById('mqttPort'),
       mqttEnabled: document.getElementById('mqttEnabled'),
+      mqttUsername: document.getElementById('mqttUsername'),
+      mqttPasswordSet: document.getElementById('mqttPasswordSet'),
       relayAutoOffMinutes: document.getElementById('relayAutoOffMinutes'),
       relayAutoOffArmed: document.getElementById('relayAutoOffArmed'),
       relayAutoOffRemaining: document.getElementById('relayAutoOffRemaining'),
@@ -986,6 +1111,8 @@ namespace
       tempCalLiveRaw: document.getElementById('tempCalLiveRaw'),
       tempCalComputedC: document.getElementById('tempCalComputedC'),
       tempCalReady: document.getElementById('tempCalReady'),
+      tempCalTrimOffset: document.getElementById('tempCalTrimOffset'),
+      tempCalUnitInput: document.getElementById('tempCalUnitInput'),
       tempLowInput: document.getElementById('tempLowInput'),
       tempHighInput: document.getElementById('tempHighInput'),
       tempCalLowPoint: document.getElementById('tempCalLowPoint'),
@@ -1013,6 +1140,9 @@ namespace
         document.getElementById('btnOff'),
         document.getElementById('btnToggle'),
         document.getElementById('btnRefresh'),
+        document.getElementById('btnRelayLedTest'),
+        document.getElementById('btnWifiLedTest'),
+        document.getElementById('btnAllLedTests'),
         document.getElementById('btnSaveConfig'),
         document.getElementById('btnScanWifi'),
         document.getElementById('btnSaveTimeConfig'),
@@ -1023,11 +1153,17 @@ namespace
         document.getElementById('btnOtaUpdate'),
         document.getElementById('btnTempCaptureLow'),
         document.getElementById('btnTempCaptureHigh'),
-        document.getElementById('btnTempResetCal')
+        document.getElementById('btnTempResetCal'),
+        document.getElementById('btnTempTrimMinus1'),
+        document.getElementById('btnTempTrimMinus02'),
+        document.getElementById('btnTempTrimPlus02'),
+        document.getElementById('btnTempTrimPlus1'),
+        document.getElementById('btnTempTrimReset')
       ]
     };
 
     let currentMqttEnabled = true;
+    let currentMqttUsername = '';
     let currentOtaAutoScheduleEnabled = true;
     let currentRelayAutoOffMinutes = 0;
     let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
@@ -1058,6 +1194,15 @@ namespace
       }
     }
 
+    function showLedTestStatus(obj) {
+      if (typeof obj.relay_led_test_active !== 'undefined') {
+        ids.relayLedTestActive.textContent = obj.relay_led_test_active ? 'yes' : 'no';
+      }
+      if (typeof obj.wifi_led_test_active !== 'undefined') {
+        ids.wifiLedTestActive.textContent = obj.wifi_led_test_active ? 'yes' : 'no';
+      }
+    }
+
     function showJson(obj) {
       ids.raw.textContent = JSON.stringify(obj, null, 2);
       if (obj.relay) {
@@ -1067,7 +1212,6 @@ namespace
       if (typeof obj.uptime_ms !== 'undefined') ids.uptime.textContent = obj.uptime_ms + ' ms';
       if (obj.hostname) {
         ids.hostname.textContent = obj.hostname;
-        ids.hostnameInput.value = obj.hostname;
       }
       if (obj.firmware_version) ids.firmwareVersion.textContent = obj.firmware_version;
       if (obj.mqtt_client_id) ids.mqttClientId.textContent = obj.mqtt_client_id;
@@ -1104,6 +1248,11 @@ namespace
       if (typeof obj.temperature_calibration_ready !== 'undefined') {
         ids.tempCalReady.textContent = obj.temperature_calibration_ready ? 'yes' : 'no';
       }
+      if (typeof obj.temperature_trim_offset_c !== 'undefined') {
+        const trim = Number(obj.temperature_trim_offset_c);
+        ids.tempCalTrimOffset.textContent = Number.isFinite(trim) ? `${trim.toFixed(2)} C` : '0.00 C';
+      }
+      showLedTestStatus(obj);
       if (obj.command) ids.last.textContent = obj.command;
       ids.error.textContent = obj.ok ? 'none' : (obj.error || 'request failed');
     }
@@ -1121,6 +1270,16 @@ namespace
       if (typeof obj.mqtt_port !== 'undefined') ids.mqttPort.textContent = obj.mqtt_port;
       if (obj.mqtt_host) ids.mqttHostInput.value = obj.mqtt_host;
       if (typeof obj.mqtt_port !== 'undefined') ids.mqttPortInput.value = obj.mqtt_port;
+      if (typeof obj.mqtt_username !== 'undefined') {
+        currentMqttUsername = (obj.mqtt_username || '').toString();
+        ids.mqttUsernameInput.value = currentMqttUsername;
+        ids.mqttUsername.textContent = currentMqttUsername.length > 0 ? currentMqttUsername : 'none';
+      }
+      if (typeof obj.mqtt_password_set !== 'undefined') {
+        ids.mqttPasswordSet.textContent = obj.mqtt_password_set ? 'yes' : 'no';
+        ids.mqttPasswordInput.placeholder = obj.mqtt_password_set ? 'stored password' : 'new password';
+        ids.mqttPasswordInput.value = '';
+      }
       if (typeof obj.mqtt_enabled !== 'undefined') {
         currentMqttEnabled = !!obj.mqtt_enabled;
         ids.mqttDisabledInput.checked = !currentMqttEnabled;
@@ -1139,6 +1298,7 @@ namespace
         const remaining = Number(obj.relay_auto_off_remaining_s);
         ids.relayAutoOffRemaining.textContent = Number.isFinite(remaining) ? `${Math.max(0, Math.floor(remaining))} s` : 'n/a';
       }
+      showLedTestStatus(obj);
       if (typeof obj.ota_configured !== 'undefined') {
         ids.otaConfigured.textContent = obj.ota_configured ? 'yes' : 'no';
       }
@@ -1177,6 +1337,10 @@ namespace
       }
       if (typeof obj.temperature_calibration_ready !== 'undefined') {
         ids.tempCalReady.textContent = obj.temperature_calibration_ready ? 'yes' : 'no';
+      }
+      if (typeof obj.temperature_trim_offset_c !== 'undefined') {
+        const trim = Number(obj.temperature_trim_offset_c);
+        ids.tempCalTrimOffset.textContent = Number.isFinite(trim) ? `${trim.toFixed(2)} C` : '0.00 C';
       }
       if (obj.hostname_default) ids.hostnameDefault.textContent = obj.hostname_default;
       if (obj.nvs_health) ids.nvsHealth.textContent = obj.nvs_health;
@@ -1356,12 +1520,23 @@ namespace
       }
 
       ids.tempCalProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
+      ids.tempProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
+      ids.statusTempProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
+      const probeRaw = Number(obj.probe_raw);
+      const probeRawText = Number.isFinite(probeRaw) && probeRaw >= 0 ? String(probeRaw) : 'n/a';
+      ids.tempProbeRaw.textContent = probeRawText;
+      ids.statusTempProbeRaw.textContent = probeRawText;
       const liveRaw = Number(obj.current_temperature_raw);
-      ids.tempCalLiveRaw.textContent = Number.isFinite(liveRaw) && liveRaw >= 0 ? String(liveRaw) : 'n/a';
+      const liveRawText = Number.isFinite(liveRaw) && liveRaw >= 0 ? String(liveRaw) : 'n/a';
+      ids.tempCalLiveRaw.textContent = liveRawText;
+      ids.currentTemperatureRaw.textContent = liveRawText;
+      ids.statusCurrentTemperatureRaw.textContent = liveRawText;
 
       const computed = Number(obj.current_temperature_c);
       ids.tempCalComputedC.textContent = Number.isFinite(computed) ? `${computed.toFixed(2)} C` : 'n/a';
       ids.tempCalReady.textContent = obj.calibration_ready ? 'yes' : 'no';
+      const trim = Number(obj.trim_offset_c);
+      ids.tempCalTrimOffset.textContent = Number.isFinite(trim) ? `${trim.toFixed(2)} C` : '0.00 C';
 
       const low = obj.low_point || {};
       const high = obj.high_point || {};
@@ -1414,10 +1589,10 @@ namespace
       }
     }
 
-    async function pollLiveStatus() {
+    async function pollLiveTemperature() {
       try {
-        const status = await parseResponse(await fetch('/status'));
-        showJson(status);
+        const temperature = await parseResponse(await fetch('/temperature'));
+        showTemperatureStatus(temperature);
       } catch {
         // Silent polling failures keep the page usable during reconnects.
       }
@@ -1465,6 +1640,19 @@ namespace
       }
     }
 
+    async function runLedTest(path, commandName) {
+      setBusy(true);
+      try {
+        const data = await parseResponse(await fetch(path, { method: 'POST' }));
+        showJson(data);
+        ids.last.textContent = commandName;
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'LED test request failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
     async function scanWifi() {
       setBusy(true);
       try {
@@ -1482,6 +1670,8 @@ namespace
       const hostname = ids.hostnameInput.value.trim();
       const mqttHost = ids.mqttHostInput.value.trim();
       const mqttPort = ids.mqttPortInput.value.trim();
+      const mqttUsername = ids.mqttUsernameInput.value.trim();
+      const mqttPassword = ids.mqttPasswordInput.value;
       const relayAutoOffText = ids.relayAutoOffMinutesInput.value.trim();
       const relayAutoOffParsed = relayAutoOffText.length > 0 ? Number(relayAutoOffText) : currentRelayAutoOffMinutes;
       const relayAutoOffMinutes = Number.isFinite(relayAutoOffParsed) ? Math.max(0, Math.floor(relayAutoOffParsed)) : currentRelayAutoOffMinutes;
@@ -1490,10 +1680,11 @@ namespace
       const wifiSsid = ids.wifiSsidInput.value.trim();
       const wifiPass = ids.wifiPassInput.value;
       const mqttEnabledChanged = mqttEnabled !== currentMqttEnabled;
+      const mqttAuthChanged = mqttUsername !== currentMqttUsername || mqttPassword.trim().length > 0;
       const otaAutoScheduleChanged = otaAutoScheduleEnabled !== currentOtaAutoScheduleEnabled;
       const relayAutoOffChanged = relayAutoOffMinutes !== currentRelayAutoOffMinutes;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !otaAutoScheduleChanged && !relayAutoOffChanged) {
+      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !mqttAuthChanged && !otaAutoScheduleChanged && !relayAutoOffChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -1504,6 +1695,12 @@ namespace
         if (hostname) body.set('hostname', hostname);
         if (mqttHost) body.set('mqtt_host', mqttHost);
         if (mqttPort) body.set('mqtt_port', mqttPort);
+        if (mqttAuthChanged) {
+          body.set('mqtt_user', mqttUsername);
+          if (mqttPassword.trim().length > 0 || mqttUsername.length === 0) {
+            body.set('mqtt_pass', mqttPassword);
+          }
+        }
         if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
         if (otaAutoScheduleChanged) body.set('ota_auto_schedule_enabled', otaAutoScheduleEnabled ? '1' : '0');
         if (relayAutoOffChanged) body.set('relay_auto_off_minutes', String(relayAutoOffMinutes));
@@ -1541,7 +1738,8 @@ namespace
       setBusy(true);
       try {
         const body = new URLSearchParams();
-        body.set('temp_c', String(temp));
+        body.set('temp_value', String(temp));
+        body.set('temp_unit', ids.tempCalUnitInput.value || 'c');
         const data = await parseResponse(await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1567,6 +1765,32 @@ namespace
       } finally {
         setBusy(false);
       }
+    }
+
+    async function setTemperatureTrimOffset(offsetC) {
+      setBusy(true);
+      try {
+        const body = new URLSearchParams();
+        body.set('offset_c', String(offsetC));
+        const data = await parseResponse(await fetch('/temperature/trim', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        }));
+        showTemperatureStatus(data);
+        showJson({ ok: true, command: 'temp-trim-set', trim_offset_c: data.trim_offset_c });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Temperature trim update failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function adjustTemperatureTrim(deltaC) {
+      const currentText = (ids.tempCalTrimOffset.textContent || '0').replace(' C', '').trim();
+      const current = Number(currentText);
+      const base = Number.isFinite(current) ? current : 0;
+      await setTemperatureTrimOffset(base + deltaC);
     }
 
     async function saveTimeConfig() {
@@ -1682,6 +1906,9 @@ namespace
     document.getElementById('btnOff').addEventListener('click', () => sendCommand('/off', 'off'));
     document.getElementById('btnToggle').addEventListener('click', () => sendCommand('/toggle', 'toggle'));
     document.getElementById('btnRefresh').addEventListener('click', refreshStatus);
+    document.getElementById('btnRelayLedTest').addEventListener('click', () => runLedTest('/test/relay-led', 'test-relay-led'));
+    document.getElementById('btnWifiLedTest').addEventListener('click', () => runLedTest('/test/wifi-led', 'test-wifi-led'));
+    document.getElementById('btnAllLedTests').addEventListener('click', () => runLedTest('/test/leds', 'test-leds'));
     document.getElementById('btnSaveConfig').addEventListener('click', applyConfig);
     document.getElementById('btnScanWifi').addEventListener('click', scanWifi);
     document.getElementById('btnSaveTimeConfig').addEventListener('click', saveTimeConfig);
@@ -1693,10 +1920,15 @@ namespace
     document.getElementById('btnTempCaptureLow').addEventListener('click', () => captureTemperaturePoint('/temperature/capture-low', ids.tempLowInput));
     document.getElementById('btnTempCaptureHigh').addEventListener('click', () => captureTemperaturePoint('/temperature/capture-high', ids.tempHighInput));
     document.getElementById('btnTempResetCal').addEventListener('click', resetTemperatureCalibration);
+    document.getElementById('btnTempTrimMinus1').addEventListener('click', () => adjustTemperatureTrim(-1.0));
+    document.getElementById('btnTempTrimMinus02').addEventListener('click', () => adjustTemperatureTrim(-0.2));
+    document.getElementById('btnTempTrimPlus02').addEventListener('click', () => adjustTemperatureTrim(0.2));
+    document.getElementById('btnTempTrimPlus1').addEventListener('click', () => adjustTemperatureTrim(1.0));
+    document.getElementById('btnTempTrimReset').addEventListener('click', () => setTemperatureTrimOffset(0.0));
 
     resetScheduleForm();
     refreshStatus();
-    setInterval(pollLiveStatus, 1000);
+    setInterval(pollLiveTemperature, 1000);
   </script>
 </body>
 </html>
@@ -1747,6 +1979,12 @@ void WebControlServer::registerRoutes()
              { handleOff(); });
   gServer.on("/toggle", HTTP_POST, [this]()
              { handleToggle(); });
+  gServer.on("/test/relay-led", HTTP_POST, [this]()
+             { handleRelayLedTest(); });
+  gServer.on("/test/wifi-led", HTTP_POST, [this]()
+             { handleWifiLedTest(); });
+  gServer.on("/test/leds", HTTP_POST, [this]()
+             { handleAllLedTests(); });
   gServer.on("/status", HTTP_GET, [this]()
              { handleStatus(); });
   gServer.on("/config", HTTP_GET, [this]()
@@ -1777,6 +2015,8 @@ void WebControlServer::registerRoutes()
              { handleTemperatureCaptureLow(); });
   gServer.on("/temperature/capture-high", HTTP_POST, [this]()
              { handleTemperatureCaptureHigh(); });
+  gServer.on("/temperature/trim", HTTP_POST, [this]()
+             { handleTemperatureTrimOffset(); });
   gServer.on("/temperature/calibration/reset", HTTP_POST, [this]()
              { handleTemperatureCalibrationReset(); });
   gServer.on("/favicon.ico", HTTP_GET, []()
@@ -1933,6 +2173,15 @@ void WebControlServer::handleStatus()
   }
   json += ",\"temperature_calibration_ready\":";
   json += context.getTemperatureCalibrationReady != nullptr ? (context.getTemperatureCalibrationReady() ? "true" : "false") : "false";
+  json += ",\"temperature_trim_offset_c\":";
+  if (context.getTemperatureTrimOffsetC != nullptr)
+  {
+    json += String(context.getTemperatureTrimOffsetC(), 2);
+  }
+  else
+  {
+    json += "0.00";
+  }
   json += "}";
   gServer.send(200, "application/json", json);
 }
@@ -1966,6 +2215,10 @@ void WebControlServer::handleConfigSave()
   {
     const String mqttHost = gServer.arg("mqtt_host");
     const String mqttPortText = gServer.arg("mqtt_port");
+    const bool hasMqttUserArg = gServer.hasArg("mqtt_user");
+    const bool hasMqttPassArg = gServer.hasArg("mqtt_pass");
+    const String mqttUser = gServer.arg("mqtt_user");
+    const String mqttPass = gServer.arg("mqtt_pass");
     const String mqttEnabledText = gServer.arg("mqtt_enabled");
     if (mqttHost.length() > 0 || mqttPortText.length() > 0)
     {
@@ -1988,6 +2241,19 @@ void WebControlServer::handleConfigSave()
     if (mqttEnabledText.length() > 0)
     {
       context.mqtt->setEnabled(parseBoolArg(mqttEnabledText));
+      settingsSaved = true;
+    }
+
+    if (hasMqttUserArg || hasMqttPassArg)
+    {
+      const String nextUser = hasMqttUserArg ? mqttUser : context.mqtt->username();
+      String nextPass = hasMqttPassArg ? mqttPass : context.mqtt->password();
+      if (hasMqttUserArg && mqttUser.length() == 0 && !hasMqttPassArg)
+      {
+        nextPass = String();
+      }
+
+      context.mqtt->setCredentials(nextUser, nextPass);
       settingsSaved = true;
     }
   }
@@ -2409,6 +2675,45 @@ void WebControlServer::handleTemperatureStatus()
   gServer.send(200, "application/json", buildTemperatureJson(context));
 }
 
+void WebControlServer::handleRelayLedTest()
+{
+  Serial.println("[HTTP] POST /test/relay-led");
+
+  if (context.startRelayLedTest == nullptr || !context.startRelayLedTest())
+  {
+    sendError(500, "Relay LED test is unavailable");
+    return;
+  }
+
+  gServer.send(200, "application/json", buildLedTestJson(context, "test-relay-led", "Relay LED test started for 5 seconds"));
+}
+
+void WebControlServer::handleWifiLedTest()
+{
+  Serial.println("[HTTP] POST /test/wifi-led");
+
+  if (context.startWifiLedTest == nullptr || !context.startWifiLedTest())
+  {
+    sendError(500, "Wi-Fi LED test is unavailable");
+    return;
+  }
+
+  gServer.send(200, "application/json", buildLedTestJson(context, "test-wifi-led", "Wi-Fi LED test started for 5 seconds"));
+}
+
+void WebControlServer::handleAllLedTests()
+{
+  Serial.println("[HTTP] POST /test/leds");
+
+  if (context.startAllLedTests == nullptr || !context.startAllLedTests())
+  {
+    sendError(500, "LED tests are unavailable");
+    return;
+  }
+
+  gServer.send(200, "application/json", buildLedTestJson(context, "test-leds", "Both LED tests started for 5 seconds"));
+}
+
 void WebControlServer::handleTemperatureCaptureLow()
 {
   Serial.println("[HTTP] POST /temperature/capture-low");
@@ -2419,15 +2724,27 @@ void WebControlServer::handleTemperatureCaptureLow()
     return;
   }
 
-  const String tempText = gServer.arg("temp_c");
+  String tempText = gServer.arg("temp_value");
   if (tempText.length() == 0)
   {
-    sendError(400, "Missing temp_c");
+    tempText = gServer.arg("temp_c");
+  }
+  if (tempText.length() == 0)
+  {
+    sendError(400, "Missing temp_value");
     return;
   }
 
+  const String unitText = gServer.arg("temp_unit");
+  float knownTempC = NAN;
   String error;
-  if (!context.captureLowCalibration(tempText.toFloat(), error))
+  if (!parseCalibrationTemperatureC(tempText, unitText, knownTempC, error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Invalid calibration temperature");
+    return;
+  }
+
+  if (!context.captureLowCalibration(knownTempC, error))
   {
     sendError(400, error.length() > 0 ? error.c_str() : "Failed to capture low calibration");
     return;
@@ -2452,15 +2769,27 @@ void WebControlServer::handleTemperatureCaptureHigh()
     return;
   }
 
-  const String tempText = gServer.arg("temp_c");
+  String tempText = gServer.arg("temp_value");
   if (tempText.length() == 0)
   {
-    sendError(400, "Missing temp_c");
+    tempText = gServer.arg("temp_c");
+  }
+  if (tempText.length() == 0)
+  {
+    sendError(400, "Missing temp_value");
     return;
   }
 
+  const String unitText = gServer.arg("temp_unit");
+  float knownTempC = NAN;
   String error;
-  if (!context.captureHighCalibration(tempText.toFloat(), error))
+  if (!parseCalibrationTemperatureC(tempText, unitText, knownTempC, error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Invalid calibration temperature");
+    return;
+  }
+
+  if (!context.captureHighCalibration(knownTempC, error))
   {
     sendError(400, error.length() > 0 ? error.c_str() : "Failed to capture high calibration");
     return;
@@ -2471,6 +2800,39 @@ void WebControlServer::handleTemperatureCaptureHigh()
   {
     json.remove(json.length() - 1);
     json += ",\"message\":\"High calibration captured\"}";
+  }
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleTemperatureTrimOffset()
+{
+  Serial.println("[HTTP] POST /temperature/trim");
+
+  if (context.setTemperatureTrimOffsetC == nullptr)
+  {
+    sendError(500, "Temperature trim adjustment is unavailable");
+    return;
+  }
+
+  const String offsetText = gServer.arg("offset_c");
+  if (offsetText.length() == 0)
+  {
+    sendError(400, "Missing offset_c");
+    return;
+  }
+
+  String error;
+  if (!context.setTemperatureTrimOffsetC(offsetText.toFloat(), error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Failed to set temperature trim offset");
+    return;
+  }
+
+  String json = buildTemperatureJson(context);
+  if (json.endsWith("}"))
+  {
+    json.remove(json.length() - 1);
+    json += ",\"message\":\"Temperature trim offset updated\"}";
   }
   gServer.send(200, "application/json", json);
 }

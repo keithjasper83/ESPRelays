@@ -52,6 +52,16 @@ constexpr char FIRMWARE_VERSION[] = "2.1.1";
 
 constexpr char MQTT_HOST[] = "192.168.0.50";
 constexpr int MQTT_PORT = 1883;
+#ifndef MQTT_USER_DEFAULT
+#define MQTT_USER_DEFAULT ""
+#endif
+
+#ifndef MQTT_PASS_DEFAULT
+#define MQTT_PASS_DEFAULT ""
+#endif
+
+constexpr char MQTT_USER[] = MQTT_USER_DEFAULT;
+constexpr char MQTT_PASS[] = MQTT_PASS_DEFAULT;
 
 constexpr char TIME_SERVER_DEFAULT[] = "pool.ntp.org";
 constexpr char TIME_SERVER_FALLBACK_1[] = "time.google.com";

@@ -45,6 +45,7 @@ TemperatureProbeManager temperatureProbeManager;
 unsigned long lastHeartbeat = 0;
 unsigned long lastTimestampLog = 0;
 unsigned long bootTime = 0;
+unsigned long lastSerialInputMs = 0;
 String serialBuffer;
 String deviceHostname = DEVICE_HOSTNAME_DEFAULT;
 bool mdnsStarted = false;
@@ -58,6 +59,30 @@ namespace
     constexpr char DEVICE_PREF_NAMESPACE[] = "device_cfg";
     constexpr char DEVICE_PREF_HOSTNAME[] = "hostname";
     constexpr char DEVICE_PREF_OTA_AUTO_SCHEDULE[] = "ota_auto_sched";
+    constexpr unsigned long LED_TEST_DURATION_MS = 5000;
+    constexpr unsigned long SERIAL_IDLE_SUBMIT_MS = 1200;
+    constexpr size_t SERIAL_MAX_COMMAND_LEN = 128;
+
+    bool parseOnOff(const String &payload, bool &on)
+    {
+        String normalized = payload;
+        normalized.trim();
+        normalized.toLowerCase();
+
+        if (normalized == "on" || normalized == "1" || normalized == "true")
+        {
+            on = true;
+            return true;
+        }
+
+        if (normalized == "off" || normalized == "0" || normalized == "false")
+        {
+            on = false;
+            return true;
+        }
+
+        return false;
+    }
 }
 
 const DiscoveryEndpoint DISCOVERY_ENDPOINTS[] = {
@@ -104,11 +129,25 @@ int getLowCalibrationRaw();
 int getHighCalibrationRaw();
 float getLowCalibrationTempC();
 float getHighCalibrationTempC();
+float getTemperatureTrimOffsetC();
+bool startRelayLedTest();
+bool startWifiLedTest();
+bool startAllLedTests();
+bool getRelayLedTestActive();
+bool getWifiLedTestActive();
 bool captureLowCalibration(float knownTempC, String &error);
 bool captureHighCalibration(float knownTempC, String &error);
 bool resetTemperatureCalibration(String &error);
+bool setTemperatureTrimOffsetC(float offsetC, String &error);
 bool captureTempLowFromSaved();
 bool captureTempHighFromSaved();
+void handleMqttOperation(const String &element, const String &operation, const String &payload);
+bool mqttSetLed1(bool on);
+bool mqttGetLed1();
+bool mqttSetLed2(bool on);
+bool mqttGetLed2();
+bool mqttGetRelay();
+String mqttGetDeviceName();
 
 String sanitizeHostname(const String &requested)
 {
@@ -492,24 +531,127 @@ void handleCommand(const String &cmd)
     commandRouter.printHelp(Serial);
 }
 
+void handleMqttOperation(const String &element, const String &operation, const String &payload)
+{
+    if (element == "relay" && operation == "set")
+    {
+        bool on = false;
+        if (parseOnOff(payload, on))
+        {
+            relayController.set(on);
+        }
+        return;
+    }
+
+    if (element == "relay" && (operation == "get" || operation == "state"))
+    {
+        mqttManager.publishRelayState(relayController.isOn());
+        return;
+    }
+}
+
+bool mqttSetLed1(bool on)
+{
+    return indicatorLeds.setRelayLed(on);
+}
+
+bool mqttGetLed1()
+{
+    return indicatorLeds.relayLedState();
+}
+
+bool mqttSetLed2(bool on)
+{
+    return indicatorLeds.setWifiLed(on);
+}
+
+bool mqttGetLed2()
+{
+    return indicatorLeds.wifiLedState();
+}
+
+bool mqttGetRelay()
+{
+    return relayController.isOn();
+}
+
+String mqttGetDeviceName()
+{
+    return deviceHostname;
+}
+
+bool startRelayLedTest()
+{
+    return indicatorLeds.startRelayLedTest(millis(), LED_TEST_DURATION_MS);
+}
+
+bool startWifiLedTest()
+{
+    return indicatorLeds.startWifiLedTest(millis(), LED_TEST_DURATION_MS);
+}
+
+bool startAllLedTests()
+{
+    return indicatorLeds.startAllLedTests(millis(), LED_TEST_DURATION_MS);
+}
+
+bool getRelayLedTestActive()
+{
+    return indicatorLeds.relayLedTestActive();
+}
+
+bool getWifiLedTestActive()
+{
+    return indicatorLeds.wifiLedTestActive();
+}
+
 void handleSerial()
 {
+    auto submitSerialBuffer = []()
+    {
+        if (serialBuffer.length() == 0)
+        {
+            return;
+        }
+
+        handleCommand(serialBuffer);
+        serialBuffer = "";
+    };
+
     while (Serial.available())
     {
         const char c = static_cast<char>(Serial.read());
+        lastSerialInputMs = millis();
 
-        if (c == '\n' || c == '\r')
+        if (c == '\n' || c == '\r' || c == '\0')
+        {
+            submitSerialBuffer();
+            continue;
+        }
+
+        if (c == '\b' || static_cast<unsigned char>(c) == 127)
         {
             if (serialBuffer.length() > 0)
             {
-                handleCommand(serialBuffer);
-                serialBuffer = "";
+                serialBuffer.remove(serialBuffer.length() - 1);
             }
+            continue;
         }
-        else
+
+        if (static_cast<unsigned char>(c) < 32)
+        {
+            continue;
+        }
+
+        if (serialBuffer.length() < SERIAL_MAX_COMMAND_LEN)
         {
             serialBuffer += c;
         }
+    }
+
+    if (serialBuffer.length() > 0 && (millis() - lastSerialInputMs) >= SERIAL_IDLE_SUBMIT_MS)
+    {
+        submitSerialBuffer();
     }
 }
 
@@ -597,6 +739,11 @@ float getHighCalibrationTempC()
     return temperatureProbeManager.highPointTempC();
 }
 
+float getTemperatureTrimOffsetC()
+{
+    return temperatureProbeManager.trimOffsetC();
+}
+
 bool captureLowCalibration(float knownTempC, String &error)
 {
     return temperatureProbeManager.captureLow(knownTempC, error);
@@ -610,6 +757,11 @@ bool captureHighCalibration(float knownTempC, String &error)
 bool resetTemperatureCalibration(String &error)
 {
     return temperatureProbeManager.resetCalibration(error);
+}
+
+bool setTemperatureTrimOffsetC(float offsetC, String &error)
+{
+    return temperatureProbeManager.setTrimOffsetC(offsetC, error);
 }
 
 bool captureTempLowFromSaved()
@@ -830,9 +982,16 @@ void setup()
     webContext.getHighCalibrationRaw = getHighCalibrationRaw;
     webContext.getLowCalibrationTempC = getLowCalibrationTempC;
     webContext.getHighCalibrationTempC = getHighCalibrationTempC;
+    webContext.getTemperatureTrimOffsetC = getTemperatureTrimOffsetC;
     webContext.captureLowCalibration = captureLowCalibration;
     webContext.captureHighCalibration = captureHighCalibration;
     webContext.resetTemperatureCalibration = resetTemperatureCalibration;
+    webContext.setTemperatureTrimOffsetC = setTemperatureTrimOffsetC;
+    webContext.startRelayLedTest = startRelayLedTest;
+    webContext.startWifiLedTest = startWifiLedTest;
+    webContext.startAllLedTests = startAllLedTests;
+    webContext.getRelayLedTestActive = getRelayLedTestActive;
+    webContext.getWifiLedTestActive = getWifiLedTestActive;
     webControlServer.configure(webContext);
 
     indicatorLeds.begin();
@@ -848,7 +1007,8 @@ void setup()
 
     mqttManager.begin();
     mqttManager.setClientId(deviceHostname);
-    mqttManager.setCommandHandler(handleCommand);
+    mqttManager.setOperationHandler(handleMqttOperation);
+    mqttManager.setElementHandlers(mqttGetRelay, mqttSetLed1, mqttGetLed1, mqttSetLed2, mqttGetLed2, mqttGetDeviceName);
     mqttManager.setTemperatureTelemetryGetters(getTemperatureProbePresent, getTemperatureProbeRaw, getCurrentTemperatureRaw, getCurrentTemperatureC);
 
     temperatureProbeManager.begin();

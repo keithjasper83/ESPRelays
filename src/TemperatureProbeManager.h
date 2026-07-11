@@ -29,12 +29,14 @@ public:
     int highPointRaw() const;
     float lowPointTempC() const;
     float highPointTempC() const;
+    float trimOffsetC() const;
 
     bool captureLow(float knownTempC, String &error);
     bool captureHigh(float knownTempC, String &error);
     bool captureLowUsingSavedTemp(String &error);
     bool captureHighUsingSavedTemp(String &error);
     bool resetCalibration(String &error);
+    bool setTrimOffsetC(float offsetC, String &error);
 
     bool shouldRunTemperatureDependentFunctions() const;
 
@@ -56,6 +58,7 @@ private:
     bool probePresent = false;
     unsigned long lastSampleAtMs = 0;
     bool calibrationLoaded = false;
+    float trimOffset = 0.0f;
     CalibrationPoint lowPoint;
     CalibrationPoint highPoint;
 };

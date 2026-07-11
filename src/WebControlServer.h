@@ -31,6 +31,9 @@ using TemperatureProbeRawGetter = int (*)();
 using TemperatureProbeFloatGetter = float (*)();
 using TemperatureCaptureSetter = bool (*)(float knownTempC, String &error);
 using TemperatureCalibrationAction = bool (*)(String &error);
+using TemperatureTrimSetter = bool (*)(float offsetC, String &error);
+using LedTestAction = bool (*)();
+using LedTestStatusGetter = bool (*)();
 
 struct WebControlContext
 {
@@ -62,9 +65,16 @@ struct WebControlContext
     TemperatureProbeRawGetter getHighCalibrationRaw = nullptr;
     TemperatureProbeFloatGetter getLowCalibrationTempC = nullptr;
     TemperatureProbeFloatGetter getHighCalibrationTempC = nullptr;
+    TemperatureProbeFloatGetter getTemperatureTrimOffsetC = nullptr;
     TemperatureCaptureSetter captureLowCalibration = nullptr;
     TemperatureCaptureSetter captureHighCalibration = nullptr;
     TemperatureCalibrationAction resetTemperatureCalibration = nullptr;
+    TemperatureTrimSetter setTemperatureTrimOffsetC = nullptr;
+    LedTestAction startRelayLedTest = nullptr;
+    LedTestAction startWifiLedTest = nullptr;
+    LedTestAction startAllLedTests = nullptr;
+    LedTestStatusGetter getRelayLedTestActive = nullptr;
+    LedTestStatusGetter getWifiLedTestActive = nullptr;
 };
 
 class WebControlServer
@@ -100,6 +110,10 @@ private:
     void handleTemperatureCaptureLow();
     void handleTemperatureCaptureHigh();
     void handleTemperatureCalibrationReset();
+    void handleTemperatureTrimOffset();
+    void handleRelayLedTest();
+    void handleWifiLedTest();
+    void handleAllLedTests();
     void handleSetHostname();
     void handleNotFound();
 

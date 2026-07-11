@@ -104,7 +104,13 @@ Long-term:
 - Deployment profiles for home, lab, and light industrial scenarios.
 
 Engineering review backlog:
-- See [TODO_REVIEW.md](TODO_REVIEW.md) for nitpick-level code review and hardening items.
+- See [docs/TODO.md](docs/TODO.md) for the current engineering backlog.
+
+Hardware and wiring reference:
+- See [docs/WIRING.md](docs/WIRING.md) for the current ESP32-C3 Super Mini pin map and block diagram.
+
+Release history:
+- See [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## Suggest Features And Improvements
 
@@ -134,7 +140,7 @@ Board, firmware version, network setup, and MQTT usage (if any).
 ## Contact
 
 - Suggestions and bugs: https://github.com/keithjasper83/ESPRelays/issues
-- Trademark/branding permissions: see [TRADEMARKS.md](TRADEMARKS.md)
+- Trademark/branding permissions: see [docs/TRADEMARKS.md](docs/TRADEMARKS.md)
 
 ## License
 
@@ -153,4 +159,4 @@ If you redistribute this project or derivatives, you must retain:
 
 Code is open under Apache-2.0, but project branding (names/logos) is not
 licensed for unrestricted use.
-See [TRADEMARKS.md](TRADEMARKS.md).
+See [docs/TRADEMARKS.md](docs/TRADEMARKS.md).

@@ -15,8 +15,10 @@
 class MqttManager
 {
 public:
-    using CommandHandler = void (*)(const String &message);
+    using OperationHandler = void (*)(const String &element, const String &operation, const String &message);
     using BoolGetter = bool (*)();
+    using BoolSetter = bool (*)(bool on);
+    using StringGetter = String (*)();
     using IntGetter = int (*)();
     using FloatGetter = float (*)();
 
@@ -25,16 +27,24 @@ public:
     void begin();
     void maintain(bool wifiConnected, bool relayOn);
     void publishRelayState(bool relayOn);
+    void publishLed1State(bool on);
+    void publishLed2State(bool on);
+    void publishDeviceState();
     void publishStatusAndTemperature(bool relayOn);
     void setEnabled(bool enabled);
     bool isEnabled() const;
-    void setCommandHandler(CommandHandler handler);
+    void setOperationHandler(OperationHandler handler);
+    void setElementHandlers(BoolGetter relayGetter, BoolSetter led1Setter, BoolGetter led1Getter, BoolSetter led2Setter, BoolGetter led2Getter, StringGetter deviceNameGetter);
     void setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter);
     void setClientId(const String &clientId);
     void setServer(const String &host, int port);
+    void setCredentials(const String &username, const String &password);
     String clientId() const;
     String serverHost() const;
     int serverPort() const;
+    String username() const;
+    String password() const;
+    bool passwordSet() const;
     bool nvsReady() const;
     bool isConnected();
     int state();
@@ -45,15 +55,22 @@ public:
 private:
     void rebuildTopics();
     void connectIfNeeded(bool relayOn);
+    void publishElementState(const String &element, const String &value);
 
     WiFiClient wifiClient;
     PubSubClient mqtt;
-    CommandHandler commandHandler = nullptr;
+    OperationHandler operationHandler = nullptr;
     String mqttClientId;
     String mqttHost = MQTT_HOST;
     int mqttPort = MQTT_PORT;
-    String topicCmd;
-    String topicState;
+    String mqttUser = MQTT_USER;
+    String mqttPass = MQTT_PASS;
+    String topicRoot;
+    String topicOpsWildcard;
+    String topicRelayState;
+    String topicLed1State;
+    String topicLed2State;
+    String topicDeviceState;
     String topicAvail;
     String topicStatus;
     String topicTemp;
@@ -62,6 +79,12 @@ private:
     bool settingsLoaded = false;
     bool nvsReadyFlag = false;
     bool mqttEnabled = true;
+    BoolGetter getRelayState = nullptr;
+    BoolSetter setLed1State = nullptr;
+    BoolGetter getLed1State = nullptr;
+    BoolSetter setLed2State = nullptr;
+    BoolGetter getLed2State = nullptr;
+    StringGetter getDeviceName = nullptr;
     BoolGetter getProbePresent = nullptr;
     IntGetter getProbeRaw = nullptr;
     IntGetter getCurrentProbeRaw = nullptr;
