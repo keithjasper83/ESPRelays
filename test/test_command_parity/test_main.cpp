@@ -254,8 +254,11 @@ void test_web_routes_and_mqtt_path_match_router_commands()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"off\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"toggle\")"));
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("commandHandler(message);"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setCommandHandler(handleCommand);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("topicOpsWildcard = topicRoot + \"/+/+\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("if (operation == \"set\")"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("if (element == \"relay\" && (operation == \"get\" || operation == \"state\"))"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setOperationHandler(handleMqttOperation);"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setElementHandlers("));
 }
 
 int main(int argc, char **argv)
