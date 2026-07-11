@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.1.1 - 2026-07-10
+
+- Maintenance release
+
+## v2.1.0 - 2026-07-10
+
+- Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (65489de)
+- fix: update OTA release info URL to point to the correct repository (8d9bd33)
+
 ## v2.0.1 - 2026-07-10
 
 - fix: extend timestamp logging interval to 60 seconds and enhance output format (4844882)
