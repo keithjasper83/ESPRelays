@@ -64,4 +64,3 @@ constexpr uint8_t SCHEDULE_MAX_EVENTS = 10;
 
 constexpr char OTA_RELEASE_INFO_URL[] = "https://api.github.com/repos/keithjasper83/ESPRelays/releases/latest";
 constexpr char OTA_FIRMWARE_ASSET_NAME[] = "firmware-esp32-c3-devkitm-1.bin";
-
