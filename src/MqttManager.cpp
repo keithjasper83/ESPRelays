@@ -48,9 +48,8 @@ void MqttManager::begin()
     rebuildTopics();
 
     mqtt.setServer(mqttHost.c_str(), mqttPort);
-    mqtt.setCallback([this](char *topic, byte *payload, unsigned int length) {
-        this->handleMessage(topic, payload, length);
-    });
+    mqtt.setCallback([this](char *topic, byte *payload, unsigned int length)
+                     { this->handleMessage(topic, payload, length); });
 }
 
 void MqttManager::loadSettings()
