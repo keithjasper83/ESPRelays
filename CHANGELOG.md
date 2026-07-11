@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.1.3 - 2026-07-11
+
+- Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (7b4dbf6)
+- feat: Add LED active-high configuration and persistence support (fb34637)
+
 ## v2.1.2 - 2026-07-11
 
 - Merge pull request #2 from keithjasper83/copilot/fix-offline-error (8c768d0)
