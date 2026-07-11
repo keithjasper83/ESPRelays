@@ -793,6 +793,15 @@ namespace
         </div>
         <div class="settingsRow">
           <div class="settingsLabel">
+            <span>LED Active-High Wiring</span>
+            <small>Enable if LED turns on with GPIO HIGH. Disable for active-low sink wiring.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="ledActiveHighInput" type="checkbox" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
             <span>Wi-Fi SSID</span>
             <small>Tap a network below to fill this in.</small>
           </div>
@@ -834,6 +843,7 @@ namespace
       <div class="kv"><strong>Relay pin:</strong> <span id="relayPin">n/a</span></div>
       <div class="kv"><strong>Relay LED pin:</strong> <span id="relayLedPin">n/a</span></div>
       <div class="kv"><strong>Wi-Fi LED pin:</strong> <span id="wifiLedPin">n/a</span></div>
+      <div class="kv"><strong>LED Active-High:</strong> <span id="ledActiveHigh">n/a</span></div>
       <div class="kv"><strong>Relay button pin:</strong> <span id="relayButtonPin">n/a</span></div>
       <div class="kv"><strong>Reset button pin:</strong> <span id="resetButtonPin">n/a</span></div>
       <div class="kv"><strong>Temp probe ADC pin:</strong> <span id="tempProbeAdcPin">n/a</span></div>
@@ -1068,6 +1078,7 @@ namespace
       mqttDisabledInput: document.getElementById('mqttDisabledInput'),
       otaAutoScheduleDisabledInput: document.getElementById('otaAutoScheduleDisabledInput'),
       relayAutoOffMinutesInput: document.getElementById('relayAutoOffMinutesInput'),
+      ledActiveHighInput: document.getElementById('ledActiveHighInput'),
       relayLedTestActive: document.getElementById('relayLedTestActive'),
       wifiLedTestActive: document.getElementById('wifiLedTestActive'),
       timeEnabledInput: document.getElementById('timeEnabledInput'),
@@ -1120,6 +1131,7 @@ namespace
       relayPin: document.getElementById('relayPin'),
       relayLedPin: document.getElementById('relayLedPin'),
       wifiLedPin: document.getElementById('wifiLedPin'),
+      ledActiveHigh: document.getElementById('ledActiveHigh'),
       relayButtonPin: document.getElementById('relayButtonPin'),
       resetButtonPin: document.getElementById('resetButtonPin'),
       tempProbeAdcPin: document.getElementById('tempProbeAdcPin'),
@@ -1166,6 +1178,7 @@ namespace
     let currentMqttUsername = '';
     let currentOtaAutoScheduleEnabled = true;
     let currentRelayAutoOffMinutes = 0;
+    let currentLedActiveHigh = true;
     let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
 
     function setBusy(busy) {
@@ -1252,6 +1265,11 @@ namespace
         const trim = Number(obj.temperature_trim_offset_c);
         ids.tempCalTrimOffset.textContent = Number.isFinite(trim) ? `${trim.toFixed(2)} C` : '0.00 C';
       }
+      if (typeof obj.led_active_high !== 'undefined') {
+        const activeHigh = !!obj.led_active_high;
+        ids.ledActiveHigh.textContent = activeHigh ? 'yes' : 'no';
+        ids.ledActiveHighInput.checked = activeHigh;
+      }
       showLedTestStatus(obj);
       if (obj.command) ids.last.textContent = obj.command;
       ids.error.textContent = obj.ok ? 'none' : (obj.error || 'request failed');
@@ -1297,6 +1315,11 @@ namespace
       if (typeof obj.relay_auto_off_remaining_s !== 'undefined') {
         const remaining = Number(obj.relay_auto_off_remaining_s);
         ids.relayAutoOffRemaining.textContent = Number.isFinite(remaining) ? `${Math.max(0, Math.floor(remaining))} s` : 'n/a';
+      }
+      if (typeof obj.led_active_high !== 'undefined') {
+        currentLedActiveHigh = !!obj.led_active_high;
+        ids.ledActiveHighInput.checked = currentLedActiveHigh;
+        ids.ledActiveHigh.textContent = currentLedActiveHigh ? 'yes' : 'no';
       }
       showLedTestStatus(obj);
       if (typeof obj.ota_configured !== 'undefined') {
@@ -1675,6 +1698,7 @@ namespace
       const relayAutoOffText = ids.relayAutoOffMinutesInput.value.trim();
       const relayAutoOffParsed = relayAutoOffText.length > 0 ? Number(relayAutoOffText) : currentRelayAutoOffMinutes;
       const relayAutoOffMinutes = Number.isFinite(relayAutoOffParsed) ? Math.max(0, Math.floor(relayAutoOffParsed)) : currentRelayAutoOffMinutes;
+      const ledActiveHigh = !!ids.ledActiveHighInput.checked;
       const mqttEnabled = !ids.mqttDisabledInput.checked;
       const otaAutoScheduleEnabled = !ids.otaAutoScheduleDisabledInput.checked;
       const wifiSsid = ids.wifiSsidInput.value.trim();
@@ -1683,8 +1707,9 @@ namespace
       const mqttAuthChanged = mqttUsername !== currentMqttUsername || mqttPassword.trim().length > 0;
       const otaAutoScheduleChanged = otaAutoScheduleEnabled !== currentOtaAutoScheduleEnabled;
       const relayAutoOffChanged = relayAutoOffMinutes !== currentRelayAutoOffMinutes;
+      const ledActiveHighChanged = ledActiveHigh !== currentLedActiveHigh;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !mqttAuthChanged && !otaAutoScheduleChanged && !relayAutoOffChanged) {
+      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !mqttAuthChanged && !otaAutoScheduleChanged && !relayAutoOffChanged && !ledActiveHighChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -1704,6 +1729,7 @@ namespace
         if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
         if (otaAutoScheduleChanged) body.set('ota_auto_schedule_enabled', otaAutoScheduleEnabled ? '1' : '0');
         if (relayAutoOffChanged) body.set('relay_auto_off_minutes', String(relayAutoOffMinutes));
+        if (ledActiveHighChanged) body.set('led_active_high', ledActiveHigh ? '1' : '0');
         if (wifiSsid) body.set('wifi_ssid', wifiSsid);
         if (wifiPass.trim()) body.set('wifi_pass', wifiPass);
 
@@ -2142,6 +2168,9 @@ void WebControlServer::handleStatus()
   json += ",\"relay_auto_off_remaining_s\":";
   json += context.getRelayAutoOffRemainingSeconds != nullptr ? context.getRelayAutoOffRemainingSeconds() : 0;
   json += ",\"temperature_probe_present\":";
+  json += "\"led_active_high\":";
+  json += context.getLedActiveHigh != nullptr ? (context.getLedActiveHigh() ? "true" : "false") : (LED_ACTIVE_HIGH ? "true" : "false");
+  json += ",";
   json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
   json += ",\"temperature_probe_raw\":";
   if (context.getTemperatureProbeRaw != nullptr)
@@ -2182,6 +2211,8 @@ void WebControlServer::handleStatus()
   {
     json += "0.00";
   }
+  json += ",\"led_active_high\":";
+  json += context.getLedActiveHigh != nullptr ? (context.getLedActiveHigh() ? "true" : "false") : (LED_ACTIVE_HIGH ? "true" : "false");
   json += "}";
   gServer.send(200, "application/json", json);
 }
@@ -2291,6 +2322,25 @@ void WebControlServer::handleConfigSave()
     if (!context.setRelayAutoOffMinutes(relayAutoOffMinutes, error))
     {
       sendError(400, error.length() > 0 ? error.c_str() : "Failed to update relay auto-off setting");
+      return;
+    }
+
+    settingsSaved = true;
+  }
+
+  const String ledActiveHighText = gServer.arg("led_active_high");
+  if (ledActiveHighText.length() > 0)
+  {
+    if (context.setLedActiveHigh == nullptr)
+    {
+      sendError(500, "LED polarity setter is not available");
+      return;
+    }
+
+    String error;
+    if (!context.setLedActiveHigh(parseBoolArg(ledActiveHighText), error))
+    {
+      sendError(400, error.length() > 0 ? error.c_str() : "Failed to update LED polarity");
       return;
     }
 

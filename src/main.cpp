@@ -135,6 +135,8 @@ bool startWifiLedTest();
 bool startAllLedTests();
 bool getRelayLedTestActive();
 bool getWifiLedTestActive();
+bool getLedActiveHigh();
+bool setLedActiveHigh(bool activeHigh, String &error);
 bool captureLowCalibration(float knownTempC, String &error);
 bool captureHighCalibration(float knownTempC, String &error);
 bool resetTemperatureCalibration(String &error);
@@ -605,6 +607,22 @@ bool getWifiLedTestActive()
     return indicatorLeds.wifiLedTestActive();
 }
 
+bool getLedActiveHigh()
+{
+    return indicatorLeds.isActiveHigh();
+}
+
+bool setLedActiveHigh(bool activeHigh, String &error)
+{
+    if (!indicatorLeds.setActiveHigh(activeHigh))
+    {
+        error = "Failed to persist LED polarity";
+        return false;
+    }
+
+    return true;
+}
+
 void handleSerial()
 {
     auto submitSerialBuffer = []()
@@ -992,6 +1010,8 @@ void setup()
     webContext.startAllLedTests = startAllLedTests;
     webContext.getRelayLedTestActive = getRelayLedTestActive;
     webContext.getWifiLedTestActive = getWifiLedTestActive;
+    webContext.getLedActiveHigh = getLedActiveHigh;
+    webContext.setLedActiveHigh = setLedActiveHigh;
     webControlServer.configure(webContext);
 
     indicatorLeds.begin();

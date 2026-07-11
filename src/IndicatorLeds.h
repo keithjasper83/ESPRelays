@@ -11,6 +11,8 @@ class IndicatorLeds
 public:
     void begin();
     void update(unsigned long now, bool relayOn, bool wifiConnected);
+    bool setActiveHigh(bool activeHigh);
+    bool isActiveHigh() const;
     bool setRelayLed(bool on);
     bool relayLedState() const;
     bool setWifiLed(bool on);
@@ -35,6 +37,7 @@ private:
     bool manualWifiLedOn = false;
     bool relayLedTestMode = false;
     bool wifiLedTestMode = false;
+    bool ledActiveHigh = true;
     unsigned long relayLedTestEnd = 0;
     unsigned long wifiLedTestEnd = 0;
     unsigned long wifiPulseStart = 0;

@@ -7,13 +7,31 @@
 #include "IndicatorLeds.h"
 
 #include <Arduino.h>
+#include <Preferences.h>
 
 #include "AppConfig.h"
+
+namespace
+{
+    constexpr char LED_PREF_NAMESPACE[] = "led_cfg";
+    constexpr char LED_PREF_ACTIVE_HIGH[] = "active_high";
+}
 
 void IndicatorLeds::begin()
 {
     pinMode(RELAY_LED_PIN, OUTPUT);
     pinMode(WIFI_LED_PIN, OUTPUT);
+
+    Preferences preferences;
+    if (preferences.begin(LED_PREF_NAMESPACE, true))
+    {
+        ledActiveHigh = preferences.getBool(LED_PREF_ACTIVE_HIGH, LED_ACTIVE_HIGH);
+        preferences.end();
+    }
+    else
+    {
+        ledActiveHigh = LED_ACTIVE_HIGH;
+    }
 
     lastRelayOn = false;
     lastWifiConnected = false;
@@ -28,6 +46,33 @@ void IndicatorLeds::begin()
 
     writeRelayLed(false);
     writeWifiLed(false);
+}
+
+bool IndicatorLeds::setActiveHigh(bool activeHigh)
+{
+    ledActiveHigh = activeHigh;
+
+    Preferences preferences;
+    if (preferences.begin(LED_PREF_NAMESPACE, false))
+    {
+        preferences.putBool(LED_PREF_ACTIVE_HIGH, ledActiveHigh);
+        preferences.end();
+    }
+    else
+    {
+        return false;
+    }
+
+    const bool relayOutput = relayLedTestMode ? true : (relayLedManual ? manualRelayLedOn : lastRelayOn);
+    const bool wifiOutput = wifiLedTestMode ? true : (wifiLedManual ? manualWifiLedOn : wifiLedOn);
+    writeRelayLed(relayOutput);
+    writeWifiLed(wifiOutput);
+    return true;
+}
+
+bool IndicatorLeds::isActiveHigh() const
+{
+    return ledActiveHigh;
 }
 
 bool IndicatorLeds::setRelayLed(bool on)
@@ -94,13 +139,13 @@ bool IndicatorLeds::wifiLedTestActive() const
 
 void IndicatorLeds::writeRelayLed(bool on)
 {
-    const bool level = LED_ACTIVE_HIGH ? on : !on;
+    const bool level = ledActiveHigh ? on : !on;
     digitalWrite(RELAY_LED_PIN, level ? HIGH : LOW);
 }
 
 void IndicatorLeds::writeWifiLed(bool on)
 {
-    const bool level = LED_ACTIVE_HIGH ? on : !on;
+    const bool level = ledActiveHigh ? on : !on;
     digitalWrite(WIFI_LED_PIN, level ? HIGH : LOW);
 }
 

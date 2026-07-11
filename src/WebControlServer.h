@@ -34,6 +34,8 @@ using TemperatureCalibrationAction = bool (*)(String &error);
 using TemperatureTrimSetter = bool (*)(float offsetC, String &error);
 using LedTestAction = bool (*)();
 using LedTestStatusGetter = bool (*)();
+using LedPolarityGetter = bool (*)();
+using LedPolaritySetter = bool (*)(bool activeHigh, String &error);
 
 struct WebControlContext
 {
@@ -75,6 +77,8 @@ struct WebControlContext
     LedTestAction startAllLedTests = nullptr;
     LedTestStatusGetter getRelayLedTestActive = nullptr;
     LedTestStatusGetter getWifiLedTestActive = nullptr;
+    LedPolarityGetter getLedActiveHigh = nullptr;
+    LedPolaritySetter setLedActiveHigh = nullptr;
 };
 
 class WebControlServer
