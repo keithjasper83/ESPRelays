@@ -15,6 +15,82 @@
 
 namespace
 {
+    constexpr int MAX_HTTP_REDIRECTS = 5;
+
+    bool isRedirectStatus(int statusCode)
+    {
+        return statusCode == HTTP_CODE_MOVED_PERMANENTLY ||
+               statusCode == HTTP_CODE_FOUND ||
+               statusCode == HTTP_CODE_SEE_OTHER ||
+               statusCode == HTTP_CODE_TEMPORARY_REDIRECT ||
+               statusCode == 308;
+    }
+
+    bool resolveFinalDownloadUrl(const String &initialUrl, String &resolvedUrl, String &error)
+    {
+        String currentUrl = initialUrl;
+
+        for (int i = 0; i < MAX_HTTP_REDIRECTS; i++)
+        {
+            WiFiClientSecure client;
+            client.setInsecure();
+
+            HTTPClient http;
+            if (!http.begin(client, currentUrl))
+            {
+                error = "Failed to initialize HTTPS client for redirect resolution";
+                return false;
+            }
+
+            http.setUserAgent("esp32-relay-ota-update");
+            http.addHeader("Accept", "application/octet-stream");
+            const char *headers[] = {"Location"};
+            http.collectHeaders(headers, 1);
+
+            int statusCode = http.sendRequest("HEAD");
+            if (statusCode == HTTP_CODE_METHOD_NOT_ALLOWED)
+            {
+                statusCode = http.GET();
+            }
+
+            if (statusCode <= 0)
+            {
+                error = "Failed to resolve OTA redirect: HTTP " + String(statusCode);
+                http.end();
+                return false;
+            }
+
+            if (isRedirectStatus(statusCode))
+            {
+                const String nextUrl = http.header("Location");
+                http.end();
+
+                if (nextUrl.length() == 0)
+                {
+                    error = "Redirect response missing Location header";
+                    return false;
+                }
+
+                currentUrl = nextUrl;
+                continue;
+            }
+
+            if (statusCode >= 200 && statusCode < 300)
+            {
+                http.end();
+                resolvedUrl = currentUrl;
+                return true;
+            }
+
+            error = "Unexpected HTTP status while resolving OTA URL: " + String(statusCode);
+            http.end();
+            return false;
+        }
+
+        error = "Too many HTTP redirects while resolving OTA URL";
+        return false;
+    }
+
     String extractJsonString(const String &json, const char *key, int fromIndex = 0)
     {
         const String pattern = String("\"") + key + "\"";
@@ -339,7 +415,15 @@ bool OtaUpdateManager::performUpdate(String &message)
     client.setInsecure();
     httpUpdate.rebootOnUpdate(false);
 
-    const t_httpUpdate_return updateResult = httpUpdate.update(client, check.assetUrl);
+    String resolvedAssetUrl;
+    String resolveError;
+    if (!resolveFinalDownloadUrl(check.assetUrl, resolvedAssetUrl, resolveError))
+    {
+        message = "Update failed before download: " + resolveError;
+        return false;
+    }
+
+    const t_httpUpdate_return updateResult = httpUpdate.update(client, resolvedAssetUrl);
     switch (updateResult)
     {
     case HTTP_UPDATE_OK:

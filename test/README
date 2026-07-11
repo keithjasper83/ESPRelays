@@ -26,5 +26,5 @@ Optional hardware smoke checks (manual, non-blocking):
 1. Flash firmware and open serial monitor.
 2. Issue serial commands: on, off, toggle, state, ota-check.
 3. Call web POST endpoints: /on, /off, /toggle, /config, /time/config, /schedule/add.
-4. Publish MQTT commands to both dynamic and legacy command topics.
+4. Publish MQTT commands to the device-specific command topic only (home/<hostname>/command).
 5. Verify relay state and telemetry updates in web/MQTT output.

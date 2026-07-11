@@ -23,6 +23,8 @@ namespace
     const char *const HELP_ALIASES[] = {"h", "commands"};
     const char *const OTA_CHECK_ALIASES[] = {"check-update", "update-check"};
     const char *const OTA_UPDATE_ALIASES[] = {"update", "fwupdate"};
+    const char *const TEMP_CAPTURE_LOW_ALIASES[] = {"temp-low"};
+    const char *const TEMP_CAPTURE_HIGH_ALIASES[] = {"temp-high"};
 
     void handleOn(const String &command)
     {
@@ -124,6 +126,42 @@ namespace
         delay(150);
         ESP.restart();
     }
+
+    void handleTempCaptureLow(const String &command)
+    {
+        (void)command;
+        if (gContext == nullptr || gContext->captureTempLow == nullptr)
+        {
+            Serial.println("Temperature low capture is unavailable.");
+            return;
+        }
+
+        if (!gContext->captureTempLow())
+        {
+            Serial.println("Temperature low capture failed.");
+            return;
+        }
+
+        Serial.println("Temperature low calibration captured.");
+    }
+
+    void handleTempCaptureHigh(const String &command)
+    {
+        (void)command;
+        if (gContext == nullptr || gContext->captureTempHigh == nullptr)
+        {
+            Serial.println("Temperature high capture is unavailable.");
+            return;
+        }
+
+        if (!gContext->captureTempHigh())
+        {
+            Serial.println("Temperature high capture failed.");
+            return;
+        }
+
+        Serial.println("Temperature high calibration captured.");
+    }
 }
 
 void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
@@ -140,5 +178,7 @@ void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
     router.registerCommand({"reconnect", nullptr, 0, "force a Wi-Fi reconnect", handleReconnect});
     router.registerCommand({"ota-check", OTA_CHECK_ALIASES, sizeof(OTA_CHECK_ALIASES) / sizeof(OTA_CHECK_ALIASES[0]), "check for a newer OTA release", handleOtaCheck});
     router.registerCommand({"ota-update", OTA_UPDATE_ALIASES, sizeof(OTA_UPDATE_ALIASES) / sizeof(OTA_UPDATE_ALIASES[0]), "download and install latest OTA release", handleOtaUpdate});
+    router.registerCommand({"temp-capture-low", TEMP_CAPTURE_LOW_ALIASES, sizeof(TEMP_CAPTURE_LOW_ALIASES) / sizeof(TEMP_CAPTURE_LOW_ALIASES[0]), "capture low calibration using saved low temperature", handleTempCaptureLow});
+    router.registerCommand({"temp-capture-high", TEMP_CAPTURE_HIGH_ALIASES, sizeof(TEMP_CAPTURE_HIGH_ALIASES) / sizeof(TEMP_CAPTURE_HIGH_ALIASES[0]), "capture high calibration using saved high temperature", handleTempCaptureHigh});
     router.registerCommand({"help", HELP_ALIASES, sizeof(HELP_ALIASES) / sizeof(HELP_ALIASES[0]), "list available commands", handleHelp});
 }

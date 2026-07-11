@@ -36,6 +36,11 @@ constexpr uint8_t RELAY_BUTTON_PIN = 3;
 constexpr uint8_t RESET_BUTTON_PIN = 10;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 50;
 
+constexpr uint8_t TEMP_PROBE_ADC_PIN = 1;
+constexpr int TEMP_PROBE_PRESENT_MIN_RAW = 200;
+constexpr int TEMP_PROBE_PRESENT_MAX_RAW = 3900;
+constexpr uint32_t TEMP_PROBE_SAMPLE_INTERVAL_MS = 1000;
+
 constexpr char WIFI_SSID[] = WIFI_SSID_DEFAULT;
 constexpr char WIFI_PASS[] = WIFI_PASS_DEFAULT;
 
@@ -60,6 +65,3 @@ constexpr uint8_t SCHEDULE_MAX_EVENTS = 10;
 constexpr char OTA_RELEASE_INFO_URL[] = "https://api.github.com/repos/keithjasper83/ESPRelays/releases/latest";
 constexpr char OTA_FIRMWARE_ASSET_NAME[] = "firmware-esp32-c3-devkitm-1.bin";
 
-constexpr char TOPIC_CMD[] = "home/relay/command";
-constexpr char TOPIC_STATE[] = "home/relay/state";
-constexpr char TOPIC_AVAIL[] = "home/relay/availability";

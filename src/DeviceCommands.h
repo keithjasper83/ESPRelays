@@ -19,6 +19,8 @@ struct DeviceCommandContext
     WiFiManager *wifi = nullptr;
     OtaUpdateManager *ota = nullptr;
     void (*printStatus)() = nullptr;
+    bool (*captureTempLow)() = nullptr;
+    bool (*captureTempHigh)() = nullptr;
 };
 
 namespace DeviceCommands

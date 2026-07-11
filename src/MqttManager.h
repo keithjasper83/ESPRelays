@@ -16,6 +16,9 @@ class MqttManager
 {
 public:
     using CommandHandler = void (*)(const String &message);
+    using BoolGetter = bool (*)();
+    using IntGetter = int (*)();
+    using FloatGetter = float (*)();
 
     MqttManager();
 
@@ -26,6 +29,7 @@ public:
     void setEnabled(bool enabled);
     bool isEnabled() const;
     void setCommandHandler(CommandHandler handler);
+    void setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter);
     void setClientId(const String &clientId);
     void setServer(const String &host, int port);
     String clientId() const;
@@ -53,12 +57,15 @@ private:
     String topicAvail;
     String topicStatus;
     String topicTemp;
-    String topicLegacyCmd;
     unsigned long lastMqttRetry = 0;
     unsigned long lastTelemetryPublish = 0;
     bool settingsLoaded = false;
     bool nvsReadyFlag = false;
     bool mqttEnabled = true;
+    BoolGetter getProbePresent = nullptr;
+    IntGetter getProbeRaw = nullptr;
+    IntGetter getCurrentProbeRaw = nullptr;
+    FloatGetter getCurrentProbeTempC = nullptr;
 
     void loadSettings();
 };

@@ -21,6 +21,7 @@
 #include "RelayController.h"
 #include "ScheduleManager.h"
 #include "TimeSyncManager.h"
+#include "TemperatureProbeManager.h"
 #include "WebControlServer.h"
 #include "WiFiManager.h"
 #include "discovery/udp_discovery.h"
@@ -39,6 +40,7 @@ UdpDiscovery udpDiscovery;
 TimeSyncManager timeSyncManager;
 ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
+TemperatureProbeManager temperatureProbeManager;
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastTimestampLog = 0;
@@ -87,6 +89,26 @@ void printTimestampLine();
 void applyWeeklyOtaUpdateSchedule();
 bool getOtaAutoScheduleEnabled();
 bool setOtaAutoScheduleEnabled(bool enabled, String &error);
+int getRelayAutoOffMinutes();
+bool setRelayAutoOffMinutes(int minutes, String &error);
+bool getRelayAutoOffArmed();
+long getRelayAutoOffRemainingSeconds();
+bool getTemperatureProbePresent();
+int getTemperatureProbeRaw();
+int getCurrentTemperatureRaw();
+float getCurrentTemperatureC();
+bool getTemperatureCalibrationReady();
+bool getLowCalibrationValid();
+bool getHighCalibrationValid();
+int getLowCalibrationRaw();
+int getHighCalibrationRaw();
+float getLowCalibrationTempC();
+float getHighCalibrationTempC();
+bool captureLowCalibration(float knownTempC, String &error);
+bool captureHighCalibration(float knownTempC, String &error);
+bool resetTemperatureCalibration(String &error);
+bool captureTempLowFromSaved();
+bool captureTempHighFromSaved();
 
 String sanitizeHostname(const String &requested)
 {
@@ -227,6 +249,13 @@ void printStatus()
 
     Serial.print("Hostname: ");
     Serial.println(deviceHostname);
+
+    Serial.print("Relay auto-off (minutes): ");
+    Serial.println(relayController.autoOffMinutes());
+    Serial.print("Relay auto-off armed: ");
+    Serial.println(relayController.autoOffArmed() ? "yes" : "no");
+    Serial.print("Relay auto-off remaining (s): ");
+    Serial.println(relayController.autoOffRemainingSeconds());
 }
 
 String getDeviceHostname()
@@ -234,6 +263,25 @@ String getDeviceHostname()
     return deviceHostname;
 }
 
+int getRelayAutoOffMinutes()
+{
+    return relayController.autoOffMinutes();
+}
+
+bool setRelayAutoOffMinutes(int minutes, String &error)
+{
+    return relayController.setAutoOffMinutes(minutes, error);
+}
+
+bool getRelayAutoOffArmed()
+{
+    return relayController.autoOffArmed();
+}
+
+long getRelayAutoOffRemainingSeconds()
+{
+    return relayController.autoOffRemainingSeconds();
+}
 String getMqttClientId()
 {
     return mqttManager.clientId();
@@ -482,7 +530,110 @@ bool dispatchScheduledCommand(const String &command)
         Serial.println(normalized);
     }
 
+    if (normalized.startsWith("temp-") && !temperatureProbeManager.shouldRunTemperatureDependentFunctions())
+    {
+        if (debugLogging)
+        {
+            Serial.println("Skipping temperature-dependent command (probe not detected).");
+        }
+        return true;
+    }
+
     return commandRouter.dispatch(normalized);
+}
+
+bool getTemperatureProbePresent()
+{
+    return temperatureProbeManager.isPresent();
+}
+
+int getTemperatureProbeRaw()
+{
+    return temperatureProbeManager.rawReading();
+}
+
+int getCurrentTemperatureRaw()
+{
+    return temperatureProbeManager.currentTemperatureRaw();
+}
+
+float getCurrentTemperatureC()
+{
+    return temperatureProbeManager.currentTemperatureC();
+}
+
+bool getTemperatureCalibrationReady()
+{
+    return temperatureProbeManager.calibrationReady();
+}
+
+bool getLowCalibrationValid()
+{
+    return temperatureProbeManager.lowPointValid();
+}
+
+bool getHighCalibrationValid()
+{
+    return temperatureProbeManager.highPointValid();
+}
+
+int getLowCalibrationRaw()
+{
+    return temperatureProbeManager.lowPointRaw();
+}
+
+int getHighCalibrationRaw()
+{
+    return temperatureProbeManager.highPointRaw();
+}
+
+float getLowCalibrationTempC()
+{
+    return temperatureProbeManager.lowPointTempC();
+}
+
+float getHighCalibrationTempC()
+{
+    return temperatureProbeManager.highPointTempC();
+}
+
+bool captureLowCalibration(float knownTempC, String &error)
+{
+    return temperatureProbeManager.captureLow(knownTempC, error);
+}
+
+bool captureHighCalibration(float knownTempC, String &error)
+{
+    return temperatureProbeManager.captureHigh(knownTempC, error);
+}
+
+bool resetTemperatureCalibration(String &error)
+{
+    return temperatureProbeManager.resetCalibration(error);
+}
+
+bool captureTempLowFromSaved()
+{
+    String error;
+    const bool ok = temperatureProbeManager.captureLowUsingSavedTemp(error);
+    if (!ok)
+    {
+        Serial.print("Low temperature capture failed: ");
+        Serial.println(error);
+    }
+    return ok;
+}
+
+bool captureTempHighFromSaved()
+{
+    String error;
+    const bool ok = temperatureProbeManager.captureHighUsingSavedTemp(error);
+    if (!ok)
+    {
+        Serial.print("High temperature capture failed: ");
+        Serial.println(error);
+    }
+    return ok;
 }
 
 void heartbeat()
@@ -645,6 +796,8 @@ void setup()
     commandContext.wifi = &wifiManager;
     commandContext.ota = &otaUpdateManager;
     commandContext.printStatus = printStatus;
+    commandContext.captureTempLow = captureTempLowFromSaved;
+    commandContext.captureTempHigh = captureTempHighFromSaved;
 
     DeviceCommands::begin(commandRouter, commandContext);
 
@@ -662,6 +815,24 @@ void setup()
     webContext.getNvsHealth = getNvsHealth;
     webContext.getOtaAutoScheduleEnabled = getOtaAutoScheduleEnabled;
     webContext.setOtaAutoScheduleEnabled = setOtaAutoScheduleEnabled;
+    webContext.getRelayAutoOffMinutes = getRelayAutoOffMinutes;
+    webContext.setRelayAutoOffMinutes = setRelayAutoOffMinutes;
+    webContext.getRelayAutoOffArmed = getRelayAutoOffArmed;
+    webContext.getRelayAutoOffRemainingSeconds = getRelayAutoOffRemainingSeconds;
+    webContext.getTemperatureProbePresent = getTemperatureProbePresent;
+    webContext.getTemperatureProbeRaw = getTemperatureProbeRaw;
+    webContext.getCurrentTemperatureRaw = getCurrentTemperatureRaw;
+    webContext.getCurrentTemperatureC = getCurrentTemperatureC;
+    webContext.getTemperatureCalibrationReady = getTemperatureCalibrationReady;
+    webContext.getLowCalibrationValid = getLowCalibrationValid;
+    webContext.getHighCalibrationValid = getHighCalibrationValid;
+    webContext.getLowCalibrationRaw = getLowCalibrationRaw;
+    webContext.getHighCalibrationRaw = getHighCalibrationRaw;
+    webContext.getLowCalibrationTempC = getLowCalibrationTempC;
+    webContext.getHighCalibrationTempC = getHighCalibrationTempC;
+    webContext.captureLowCalibration = captureLowCalibration;
+    webContext.captureHighCalibration = captureHighCalibration;
+    webContext.resetTemperatureCalibration = resetTemperatureCalibration;
     webControlServer.configure(webContext);
 
     indicatorLeds.begin();
@@ -678,6 +849,9 @@ void setup()
     mqttManager.begin();
     mqttManager.setClientId(deviceHostname);
     mqttManager.setCommandHandler(handleCommand);
+    mqttManager.setTemperatureTelemetryGetters(getTemperatureProbePresent, getTemperatureProbeRaw, getCurrentTemperatureRaw, getCurrentTemperatureC);
+
+    temperatureProbeManager.begin();
 
     timeSyncManager.begin();
     scheduleManager.begin();
@@ -713,10 +887,12 @@ void loop()
     wifiManager.maintain();
     timeSyncManager.maintain(wifiManager.isConnected());
     scheduleManager.maintain(timeSyncManager.isTimeValid(), dispatchScheduledCommand);
+    relayController.maintain(millis());
     maintainMdns();
     webControlServer.beginIfNeeded(wifiManager.isConnected());
     webControlServer.handleClient();
     mqttManager.maintain(wifiManager.isConnected(), relayController.isOn());
+    temperatureProbeManager.maintain(millis());
     udpDiscovery.loop(wifiManager.isConnected());
 
     if (wifiManager.isConnected() && !lastDiscoveryWifiConnected)

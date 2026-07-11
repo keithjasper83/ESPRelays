@@ -60,6 +60,10 @@ void test_required_post_routes_exist()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/schedule/delete\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/ota/check\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/ota/update\", HTTP_POST"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature\", HTTP_GET"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature/capture-low\", HTTP_POST"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature/capture-high\", HTTP_POST"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature/calibration/reset\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/hostname\", HTTP_POST"));
 }
 
@@ -73,7 +77,9 @@ void test_config_handler_reads_form_fields()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_host\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_port\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_enabled\")"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"relay_auto_off_minutes\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"hostname\")"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"temp_c\")"));
 }
 
 void test_time_and_schedule_handlers_read_form_fields_and_validate()

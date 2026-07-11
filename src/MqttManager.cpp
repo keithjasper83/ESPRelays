@@ -108,7 +108,6 @@ void MqttManager::rebuildTopics()
     topicAvail = "home/" + mqttClientId + "/availability";
     topicStatus = "home/" + mqttClientId + "/status";
     topicTemp = "home/" + mqttClientId + "/temperature";
-    topicLegacyCmd = TOPIC_CMD;
 }
 
 void MqttManager::begin()
@@ -124,6 +123,14 @@ void MqttManager::begin()
 void MqttManager::setCommandHandler(CommandHandler handler)
 {
     commandHandler = handler;
+}
+
+void MqttManager::setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter)
+{
+    getProbePresent = probePresentGetter;
+    getProbeRaw = probeRawGetter;
+    getCurrentProbeRaw = currentRawGetter;
+    getCurrentProbeTempC = currentTempCGetter;
 }
 
 void MqttManager::setClientId(const String &clientId)
@@ -268,12 +275,40 @@ void MqttManager::publishStatusAndTemperature(bool relayOn)
 
     mqtt.publish(topicStatus.c_str(), statusJson.c_str(), true);
 
+    const bool probePresent = getProbePresent != nullptr ? getProbePresent() : false;
+    const int probeRaw = getProbeRaw != nullptr ? getProbeRaw() : -1;
+    const int currentProbeRaw = getCurrentProbeRaw != nullptr ? getCurrentProbeRaw() : -1;
+    const float probeTempC = getCurrentProbeTempC != nullptr ? getCurrentProbeTempC() : NAN;
     const float chipTempC = temperatureRead();
-    if (!isnan(chipTempC))
+
+    String tempJson = "{";
+    tempJson += "\"probe_present\":";
+    tempJson += probePresent ? "true" : "false";
+    tempJson += ",\"probe_raw\":";
+    tempJson += probeRaw;
+    tempJson += ",\"probe_current_raw\":";
+    tempJson += currentProbeRaw;
+    tempJson += ",\"probe_temperature_c\":";
+    if (isnan(probeTempC))
     {
-        String tempPayload(chipTempC, 1);
-        mqtt.publish(topicTemp.c_str(), tempPayload.c_str(), true);
+        tempJson += "null";
     }
+    else
+    {
+        tempJson += String(probeTempC, 2);
+    }
+    tempJson += ",\"esp_temperature_c\":";
+    if (isnan(chipTempC))
+    {
+        tempJson += "null";
+    }
+    else
+    {
+        tempJson += String(chipTempC, 1);
+    }
+    tempJson += "}";
+
+    mqtt.publish(topicTemp.c_str(), tempJson.c_str(), true);
 }
 
 void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
@@ -357,11 +392,6 @@ void MqttManager::connectIfNeeded(bool relayOn)
         }
 
         const bool primarySubscribed = mqtt.subscribe(topicCmd.c_str());
-        bool legacySubscribed = true;
-        if (topicLegacyCmd != topicCmd)
-        {
-            legacySubscribed = mqtt.subscribe(topicLegacyCmd.c_str());
-        }
 
         mqtt.publish(topicAvail.c_str(), "online", true);
         mqtt.publish(topicState.c_str(), relayOn ? "ON" : "OFF", true);
@@ -373,14 +403,9 @@ void MqttManager::connectIfNeeded(bool relayOn)
         {
             Serial.print("Subscribed: ");
             Serial.println(topicCmd);
-            if (topicLegacyCmd != topicCmd)
+            if (!primarySubscribed)
             {
-                Serial.print("Subscribed (legacy): ");
-                Serial.println(topicLegacyCmd);
-            }
-            if (!primarySubscribed || !legacySubscribed)
-            {
-                Serial.println("Warning: one or more MQTT subscriptions failed.");
+                Serial.println("Warning: MQTT subscription failed.");
             }
         }
     }

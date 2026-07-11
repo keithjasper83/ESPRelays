@@ -22,6 +22,15 @@ using MqttClientIdGetter = String (*)();
 using NvsHealthGetter = String (*)();
 using OtaAutoScheduleGetter = bool (*)();
 using OtaAutoScheduleSetter = bool (*)(bool enabled, String &error);
+using RelayAutoOffMinutesGetter = int (*)();
+using RelayAutoOffMinutesSetter = bool (*)(int minutes, String &error);
+using RelayAutoOffRemainingSecondsGetter = long (*)();
+using RelayAutoOffArmedGetter = bool (*)();
+using TemperatureProbePresentGetter = bool (*)();
+using TemperatureProbeRawGetter = int (*)();
+using TemperatureProbeFloatGetter = float (*)();
+using TemperatureCaptureSetter = bool (*)(float knownTempC, String &error);
+using TemperatureCalibrationAction = bool (*)(String &error);
 
 struct WebControlContext
 {
@@ -38,6 +47,24 @@ struct WebControlContext
     NvsHealthGetter getNvsHealth = nullptr;
     OtaAutoScheduleGetter getOtaAutoScheduleEnabled = nullptr;
     OtaAutoScheduleSetter setOtaAutoScheduleEnabled = nullptr;
+    RelayAutoOffMinutesGetter getRelayAutoOffMinutes = nullptr;
+    RelayAutoOffMinutesSetter setRelayAutoOffMinutes = nullptr;
+    RelayAutoOffArmedGetter getRelayAutoOffArmed = nullptr;
+    RelayAutoOffRemainingSecondsGetter getRelayAutoOffRemainingSeconds = nullptr;
+    TemperatureProbePresentGetter getTemperatureProbePresent = nullptr;
+    TemperatureProbeRawGetter getTemperatureProbeRaw = nullptr;
+    TemperatureProbeRawGetter getCurrentTemperatureRaw = nullptr;
+    TemperatureProbeFloatGetter getCurrentTemperatureC = nullptr;
+    TemperatureProbePresentGetter getTemperatureCalibrationReady = nullptr;
+    TemperatureProbePresentGetter getLowCalibrationValid = nullptr;
+    TemperatureProbePresentGetter getHighCalibrationValid = nullptr;
+    TemperatureProbeRawGetter getLowCalibrationRaw = nullptr;
+    TemperatureProbeRawGetter getHighCalibrationRaw = nullptr;
+    TemperatureProbeFloatGetter getLowCalibrationTempC = nullptr;
+    TemperatureProbeFloatGetter getHighCalibrationTempC = nullptr;
+    TemperatureCaptureSetter captureLowCalibration = nullptr;
+    TemperatureCaptureSetter captureHighCalibration = nullptr;
+    TemperatureCalibrationAction resetTemperatureCalibration = nullptr;
 };
 
 class WebControlServer
@@ -69,6 +96,10 @@ private:
     void handleScheduleDelete();
     void handleOtaCheck();
     void handleOtaUpdate();
+    void handleTemperatureStatus();
+    void handleTemperatureCaptureLow();
+    void handleTemperatureCaptureHigh();
+    void handleTemperatureCalibrationReset();
     void handleSetHostname();
     void handleNotFound();
 

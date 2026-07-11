@@ -136,6 +136,15 @@ namespace
     json += "\"ota_auto_schedule_enabled\":";
     json += context.getOtaAutoScheduleEnabled != nullptr ? (context.getOtaAutoScheduleEnabled() ? "true" : "false") : "true";
     json += ",";
+    json += "\"relay_auto_off_minutes\":";
+    json += context.getRelayAutoOffMinutes != nullptr ? context.getRelayAutoOffMinutes() : 0;
+    json += ",";
+    json += "\"relay_auto_off_armed\":";
+    json += context.getRelayAutoOffArmed != nullptr ? (context.getRelayAutoOffArmed() ? "true" : "false") : "false";
+    json += ",";
+    json += "\"relay_auto_off_remaining_s\":";
+    json += context.getRelayAutoOffRemainingSeconds != nullptr ? context.getRelayAutoOffRemainingSeconds() : 0;
+    json += ",";
     json += "\"ota_release_info_url\":\"";
     json += jsonEscape(OTA_RELEASE_INFO_URL);
     json += "\",";
@@ -163,10 +172,100 @@ namespace
     json += "\"reset_button_pin\":";
     json += RESET_BUTTON_PIN;
     json += ",";
+    json += "\"temp_probe_adc_pin\":";
+    json += TEMP_PROBE_ADC_PIN;
+    json += ",";
+    json += "\"temp_probe_present_min_raw\":";
+    json += TEMP_PROBE_PRESENT_MIN_RAW;
+    json += ",";
+    json += "\"temp_probe_present_max_raw\":";
+    json += TEMP_PROBE_PRESENT_MAX_RAW;
+    json += ",";
+    json += "\"temperature_probe_present\":";
+    json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
+    json += ",";
+    json += "\"temperature_probe_raw\":";
+    if (context.getTemperatureProbeRaw != nullptr)
+    {
+      json += context.getTemperatureProbeRaw();
+    }
+    else
+    {
+      json += -1;
+    }
+    json += ",";
+    json += "\"current_temperature_raw\":";
+    if (context.getCurrentTemperatureRaw != nullptr)
+    {
+      json += context.getCurrentTemperatureRaw();
+    }
+    else
+    {
+      json += -1;
+    }
+    json += ",";
+    json += "\"current_temperature_c\":";
+    if (context.getCurrentTemperatureC != nullptr)
+    {
+      const float currentC = context.getCurrentTemperatureC();
+      json += isnan(currentC) ? "null" : String(currentC, 2);
+    }
+    else
+    {
+      json += "null";
+    }
+    json += ",";
+    json += "\"temperature_calibration_ready\":";
+    json += context.getTemperatureCalibrationReady != nullptr ? (context.getTemperatureCalibrationReady() ? "true" : "false") : "false";
+    json += ",";
     json += "\"nvs_health\":\"";
     json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
     json += "\"";
     json += "}";
+    return json;
+  }
+
+  String buildTemperatureJson(const WebControlContext &context)
+  {
+    const bool present = context.getTemperatureProbePresent != nullptr ? context.getTemperatureProbePresent() : false;
+    const int raw = context.getTemperatureProbeRaw != nullptr ? context.getTemperatureProbeRaw() : -1;
+    const int currentRaw = context.getCurrentTemperatureRaw != nullptr ? context.getCurrentTemperatureRaw() : -1;
+    const float currentC = context.getCurrentTemperatureC != nullptr ? context.getCurrentTemperatureC() : NAN;
+    const bool ready = context.getTemperatureCalibrationReady != nullptr ? context.getTemperatureCalibrationReady() : false;
+    const bool lowValid = context.getLowCalibrationValid != nullptr ? context.getLowCalibrationValid() : false;
+    const bool highValid = context.getHighCalibrationValid != nullptr ? context.getHighCalibrationValid() : false;
+    const int lowRaw = context.getLowCalibrationRaw != nullptr ? context.getLowCalibrationRaw() : -1;
+    const int highRaw = context.getHighCalibrationRaw != nullptr ? context.getHighCalibrationRaw() : -1;
+    const float lowTempC = context.getLowCalibrationTempC != nullptr ? context.getLowCalibrationTempC() : NAN;
+    const float highTempC = context.getHighCalibrationTempC != nullptr ? context.getHighCalibrationTempC() : NAN;
+
+    String json = "{";
+    json += "\"ok\":true,";
+    json += "\"probe_present\":";
+    json += present ? "true" : "false";
+    json += ",\"probe_raw\":";
+    json += raw;
+    json += ",\"current_temperature_raw\":";
+    json += currentRaw;
+    json += ",\"current_temperature_c\":";
+    json += isnan(currentC) ? "null" : String(currentC, 2);
+    json += ",\"calibration_ready\":";
+    json += ready ? "true" : "false";
+    json += ",\"low_point\":{";
+    json += "\"valid\":";
+    json += lowValid ? "true" : "false";
+    json += ",\"raw\":";
+    json += lowRaw;
+    json += ",\"temp_c\":";
+    json += isnan(lowTempC) ? "null" : String(lowTempC, 2);
+    json += "},\"high_point\":{";
+    json += "\"valid\":";
+    json += highValid ? "true" : "false";
+    json += ",\"raw\":";
+    json += highRaw;
+    json += ",\"temp_c\":";
+    json += isnan(highTempC) ? "null" : String(highTempC, 2);
+    json += "}}";
     return json;
   }
 
@@ -590,6 +689,15 @@ namespace
         </div>
         <div class="settingsRow">
           <div class="settingsLabel">
+            <span>Relay Auto-Off (minutes)</span>
+            <small>Set to 0 to disable. Any ON trigger resets this countdown.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="relayAutoOffMinutesInput" type="text" placeholder="60" inputmode="numeric" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
             <span>Wi-Fi SSID</span>
             <small>Tap a network below to fill this in.</small>
           </div>
@@ -622,12 +730,20 @@ namespace
       <div class="kv"><strong>MQTT Host:</strong> <span id="mqttHost">n/a</span></div>
       <div class="kv"><strong>MQTT Port:</strong> <span id="mqttPort">n/a</span></div>
       <div class="kv"><strong>MQTT Enabled:</strong> <span id="mqttEnabled">n/a</span></div>
+      <div class="kv"><strong>Relay Auto-Off Minutes:</strong> <span id="relayAutoOffMinutes">n/a</span></div>
+      <div class="kv"><strong>Relay Auto-Off Armed:</strong> <span id="relayAutoOffArmed">n/a</span></div>
+      <div class="kv"><strong>Relay Auto-Off Remaining:</strong> <span id="relayAutoOffRemaining">n/a</span></div>
       <div class="kv"><strong>OTA Configured:</strong> <span id="otaConfigured">n/a</span></div>
       <div class="kv"><strong>Relay pin:</strong> <span id="relayPin">n/a</span></div>
       <div class="kv"><strong>Relay LED pin:</strong> <span id="relayLedPin">n/a</span></div>
       <div class="kv"><strong>Wi-Fi LED pin:</strong> <span id="wifiLedPin">n/a</span></div>
       <div class="kv"><strong>Relay button pin:</strong> <span id="relayButtonPin">n/a</span></div>
       <div class="kv"><strong>Reset button pin:</strong> <span id="resetButtonPin">n/a</span></div>
+      <div class="kv"><strong>Temp probe ADC pin:</strong> <span id="tempProbeAdcPin">n/a</span></div>
+      <div class="kv"><strong>Probe detect range:</strong> <span id="tempProbeRange">n/a</span></div>
+      <div class="kv"><strong>Probe present:</strong> <span id="tempProbePresent">n/a</span></div>
+      <div class="kv"><strong>Probe raw value:</strong> <span id="tempProbeRaw">n/a</span></div>
+      <div class="kv"><strong>Current temperature raw:</strong> <span id="currentTemperatureRaw">n/a</span></div>
       <div class="kv"><strong>Hostname default:</strong> <span id="hostnameDefault">n/a</span></div>
       <div class="kv"><strong>NVS:</strong> <span id="nvsHealth">n/a</span></div>
     </div>
@@ -643,6 +759,44 @@ namespace
       <div class="kv"><strong>Latest Version:</strong> <span id="otaLatestVersion">n/a</span></div>
       <div class="kv"><strong>Update Available:</strong> <span id="otaUpdateAvailable">n/a</span></div>
       <div class="kv"><strong>Status:</strong> <span id="otaStatus">No OTA check yet</span></div>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">Temperature Calibration</div>
+      <p class="muted">Capture low/high calibration points from live ADC probe readings and compute calibrated temperature.</p>
+      <div class="kv"><strong>Probe detected:</strong> <span id="tempCalProbePresent">n/a</span></div>
+      <div class="kv"><strong>Live raw ADC:</strong> <span id="tempCalLiveRaw">n/a</span></div>
+      <div class="kv"><strong>Computed temperature:</strong> <span id="tempCalComputedC">n/a</span></div>
+      <div class="kv"><strong>Calibration ready:</strong> <span id="tempCalReady">n/a</span></div>
+      <div class="settingsGroup stackSection">
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Low Reference Temperature (C)</span>
+            <small>Known real temperature when capturing low point.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="tempLowInput" type="text" placeholder="30.0" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>High Reference Temperature (C)</span>
+            <small>Known real temperature when capturing high point.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="tempHighInput" type="text" placeholder="40.0" inputmode="decimal" />
+          </div>
+        </div>
+        <div class="settingsRow settingsRow--action">
+          <div class="row">
+            <button id="btnTempCaptureLow" class="save">CAPTURE LOW</button>
+            <button id="btnTempCaptureHigh" class="save">CAPTURE HIGH</button>
+            <button id="btnTempResetCal" class="off">RESET CALIBRATION</button>
+          </div>
+        </div>
+      </div>
+      <div class="kv" style="margin-top:10px"><strong>Low point:</strong> <span id="tempCalLowPoint">n/a</span></div>
+      <div class="kv"><strong>High point:</strong> <span id="tempCalHighPoint">n/a</span></div>
     </div>
 
     <div class="card">
@@ -763,6 +917,10 @@ namespace
       <div class="kv"><strong>Uptime:</strong> <span id="uptime">n/a</span></div>
       <div class="kv"><strong>Hostname:</strong> <span id="hostname">n/a</span></div>
       <div class="kv"><strong>MQTT Client ID:</strong> <span id="mqttClientId">n/a</span></div>
+      <div class="kv"><strong>Auto-Off Remaining (s):</strong> <span id="statusRelayAutoOffRemaining">n/a</span></div>
+      <div class="kv"><strong>Probe present:</strong> <span id="statusTempProbePresent">n/a</span></div>
+      <div class="kv"><strong>Probe raw:</strong> <span id="statusTempProbeRaw">n/a</span></div>
+      <div class="kv"><strong>Current temperature raw:</strong> <span id="statusCurrentTemperatureRaw">n/a</span></div>
       <div class="kv"><strong>Error:</strong> <span id="error">none</span></div>
     </div>
 
@@ -788,6 +946,7 @@ namespace
       mqttPortInput: document.getElementById('mqttPortInput'),
       mqttDisabledInput: document.getElementById('mqttDisabledInput'),
       otaAutoScheduleDisabledInput: document.getElementById('otaAutoScheduleDisabledInput'),
+      relayAutoOffMinutesInput: document.getElementById('relayAutoOffMinutesInput'),
       timeEnabledInput: document.getElementById('timeEnabledInput'),
       timeServerInput: document.getElementById('timeServerInput'),
       timeTimezoneInput: document.getElementById('timeTimezoneInput'),
@@ -814,16 +973,36 @@ namespace
       mqttHost: document.getElementById('mqttHost'),
       mqttPort: document.getElementById('mqttPort'),
       mqttEnabled: document.getElementById('mqttEnabled'),
+      relayAutoOffMinutes: document.getElementById('relayAutoOffMinutes'),
+      relayAutoOffArmed: document.getElementById('relayAutoOffArmed'),
+      relayAutoOffRemaining: document.getElementById('relayAutoOffRemaining'),
+      statusRelayAutoOffRemaining: document.getElementById('statusRelayAutoOffRemaining'),
       otaConfigured: document.getElementById('otaConfigured'),
       otaCurrentVersion: document.getElementById('otaCurrentVersion'),
       otaLatestVersion: document.getElementById('otaLatestVersion'),
       otaUpdateAvailable: document.getElementById('otaUpdateAvailable'),
       otaStatus: document.getElementById('otaStatus'),
+      tempCalProbePresent: document.getElementById('tempCalProbePresent'),
+      tempCalLiveRaw: document.getElementById('tempCalLiveRaw'),
+      tempCalComputedC: document.getElementById('tempCalComputedC'),
+      tempCalReady: document.getElementById('tempCalReady'),
+      tempLowInput: document.getElementById('tempLowInput'),
+      tempHighInput: document.getElementById('tempHighInput'),
+      tempCalLowPoint: document.getElementById('tempCalLowPoint'),
+      tempCalHighPoint: document.getElementById('tempCalHighPoint'),
       relayPin: document.getElementById('relayPin'),
       relayLedPin: document.getElementById('relayLedPin'),
       wifiLedPin: document.getElementById('wifiLedPin'),
       relayButtonPin: document.getElementById('relayButtonPin'),
       resetButtonPin: document.getElementById('resetButtonPin'),
+      tempProbeAdcPin: document.getElementById('tempProbeAdcPin'),
+      tempProbeRange: document.getElementById('tempProbeRange'),
+      tempProbePresent: document.getElementById('tempProbePresent'),
+      tempProbeRaw: document.getElementById('tempProbeRaw'),
+      currentTemperatureRaw: document.getElementById('currentTemperatureRaw'),
+      statusTempProbePresent: document.getElementById('statusTempProbePresent'),
+      statusTempProbeRaw: document.getElementById('statusTempProbeRaw'),
+      statusCurrentTemperatureRaw: document.getElementById('statusCurrentTemperatureRaw'),
       hostnameDefault: document.getElementById('hostnameDefault'),
       nvsHealth: document.getElementById('nvsHealth'),
       wifiList: document.getElementById('wifiList'),
@@ -841,12 +1020,16 @@ namespace
         document.getElementById('btnScheduleSave'),
         document.getElementById('btnScheduleReset'),
         document.getElementById('btnOtaCheck'),
-        document.getElementById('btnOtaUpdate')
+        document.getElementById('btnOtaUpdate'),
+        document.getElementById('btnTempCaptureLow'),
+        document.getElementById('btnTempCaptureHigh'),
+        document.getElementById('btnTempResetCal')
       ]
     };
 
     let currentMqttEnabled = true;
-  let currentOtaAutoScheduleEnabled = true;
+    let currentOtaAutoScheduleEnabled = true;
+    let currentRelayAutoOffMinutes = 0;
     let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
 
     function setBusy(busy) {
@@ -888,6 +1071,39 @@ namespace
       }
       if (obj.firmware_version) ids.firmwareVersion.textContent = obj.firmware_version;
       if (obj.mqtt_client_id) ids.mqttClientId.textContent = obj.mqtt_client_id;
+      if (typeof obj.relay_auto_off_remaining_s !== 'undefined') {
+        const remaining = Number(obj.relay_auto_off_remaining_s);
+        ids.statusRelayAutoOffRemaining.textContent = Number.isFinite(remaining) ? String(Math.max(0, Math.floor(remaining))) : 'n/a';
+        ids.relayAutoOffRemaining.textContent = Number.isFinite(remaining) ? `${Math.max(0, Math.floor(remaining))} s` : 'n/a';
+      }
+      if (typeof obj.relay_auto_off_armed !== 'undefined') {
+        ids.relayAutoOffArmed.textContent = obj.relay_auto_off_armed ? 'yes' : 'no';
+      }
+      if (typeof obj.temperature_probe_present !== 'undefined') {
+        const present = !!obj.temperature_probe_present;
+        ids.statusTempProbePresent.textContent = present ? 'yes' : 'no';
+        ids.tempProbePresent.textContent = present ? 'yes' : 'no';
+      }
+      if (typeof obj.temperature_probe_raw !== 'undefined') {
+        const raw = Number(obj.temperature_probe_raw);
+        const rawText = Number.isFinite(raw) && raw >= 0 ? String(raw) : 'n/a';
+        ids.statusTempProbeRaw.textContent = rawText;
+        ids.tempProbeRaw.textContent = rawText;
+      }
+      if (typeof obj.current_temperature_raw !== 'undefined') {
+        const currentRaw = Number(obj.current_temperature_raw);
+        const currentText = Number.isFinite(currentRaw) && currentRaw >= 0 ? String(currentRaw) : 'n/a';
+        ids.statusCurrentTemperatureRaw.textContent = currentText;
+        ids.currentTemperatureRaw.textContent = currentText;
+        ids.tempCalLiveRaw.textContent = currentText;
+      }
+      if (typeof obj.current_temperature_c !== 'undefined') {
+        const currentTempC = Number(obj.current_temperature_c);
+        ids.tempCalComputedC.textContent = Number.isFinite(currentTempC) ? `${currentTempC.toFixed(2)} C` : 'n/a';
+      }
+      if (typeof obj.temperature_calibration_ready !== 'undefined') {
+        ids.tempCalReady.textContent = obj.temperature_calibration_ready ? 'yes' : 'no';
+      }
       if (obj.command) ids.last.textContent = obj.command;
       ids.error.textContent = obj.ok ? 'none' : (obj.error || 'request failed');
     }
@@ -910,6 +1126,19 @@ namespace
         ids.mqttDisabledInput.checked = !currentMqttEnabled;
         ids.mqttEnabled.textContent = currentMqttEnabled ? 'yes' : 'no';
       }
+      if (typeof obj.relay_auto_off_minutes !== 'undefined') {
+        const minutes = Number(obj.relay_auto_off_minutes);
+        currentRelayAutoOffMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
+        ids.relayAutoOffMinutesInput.value = String(currentRelayAutoOffMinutes);
+        ids.relayAutoOffMinutes.textContent = String(currentRelayAutoOffMinutes);
+      }
+      if (typeof obj.relay_auto_off_armed !== 'undefined') {
+        ids.relayAutoOffArmed.textContent = obj.relay_auto_off_armed ? 'yes' : 'no';
+      }
+      if (typeof obj.relay_auto_off_remaining_s !== 'undefined') {
+        const remaining = Number(obj.relay_auto_off_remaining_s);
+        ids.relayAutoOffRemaining.textContent = Number.isFinite(remaining) ? `${Math.max(0, Math.floor(remaining))} s` : 'n/a';
+      }
       if (typeof obj.ota_configured !== 'undefined') {
         ids.otaConfigured.textContent = obj.ota_configured ? 'yes' : 'no';
       }
@@ -927,6 +1156,28 @@ namespace
       if (typeof obj.wifi_led_pin !== 'undefined') ids.wifiLedPin.textContent = obj.wifi_led_pin;
       if (typeof obj.relay_button_pin !== 'undefined') ids.relayButtonPin.textContent = obj.relay_button_pin;
       if (typeof obj.reset_button_pin !== 'undefined') ids.resetButtonPin.textContent = obj.reset_button_pin;
+      if (typeof obj.temp_probe_adc_pin !== 'undefined') ids.tempProbeAdcPin.textContent = obj.temp_probe_adc_pin;
+      if (typeof obj.temp_probe_present_min_raw !== 'undefined' && typeof obj.temp_probe_present_max_raw !== 'undefined') {
+        ids.tempProbeRange.textContent = `${obj.temp_probe_present_min_raw + 1}-${obj.temp_probe_present_max_raw - 1}`;
+      }
+      if (typeof obj.temperature_probe_present !== 'undefined') ids.tempProbePresent.textContent = obj.temperature_probe_present ? 'yes' : 'no';
+      if (typeof obj.temperature_probe_present !== 'undefined') ids.tempCalProbePresent.textContent = obj.temperature_probe_present ? 'yes' : 'no';
+      if (typeof obj.temperature_probe_raw !== 'undefined') {
+        const raw = Number(obj.temperature_probe_raw);
+        ids.tempProbeRaw.textContent = Number.isFinite(raw) && raw >= 0 ? String(raw) : 'n/a';
+      }
+      if (typeof obj.current_temperature_raw !== 'undefined') {
+        const currentRaw = Number(obj.current_temperature_raw);
+        ids.currentTemperatureRaw.textContent = Number.isFinite(currentRaw) && currentRaw >= 0 ? String(currentRaw) : 'n/a';
+        ids.tempCalLiveRaw.textContent = Number.isFinite(currentRaw) && currentRaw >= 0 ? String(currentRaw) : 'n/a';
+      }
+      if (typeof obj.current_temperature_c !== 'undefined') {
+        const currentTempC = Number(obj.current_temperature_c);
+        ids.tempCalComputedC.textContent = Number.isFinite(currentTempC) ? `${currentTempC.toFixed(2)} C` : 'n/a';
+      }
+      if (typeof obj.temperature_calibration_ready !== 'undefined') {
+        ids.tempCalReady.textContent = obj.temperature_calibration_ready ? 'yes' : 'no';
+      }
       if (obj.hostname_default) ids.hostnameDefault.textContent = obj.hostname_default;
       if (obj.nvs_health) ids.nvsHealth.textContent = obj.nvs_health;
     }
@@ -1099,6 +1350,25 @@ namespace
       ids.otaStatus.textContent = obj.message || 'ready';
     }
 
+    function showTemperatureStatus(obj) {
+      if (!obj || !obj.ok) {
+        return;
+      }
+
+      ids.tempCalProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
+      const liveRaw = Number(obj.current_temperature_raw);
+      ids.tempCalLiveRaw.textContent = Number.isFinite(liveRaw) && liveRaw >= 0 ? String(liveRaw) : 'n/a';
+
+      const computed = Number(obj.current_temperature_c);
+      ids.tempCalComputedC.textContent = Number.isFinite(computed) ? `${computed.toFixed(2)} C` : 'n/a';
+      ids.tempCalReady.textContent = obj.calibration_ready ? 'yes' : 'no';
+
+      const low = obj.low_point || {};
+      const high = obj.high_point || {};
+      ids.tempCalLowPoint.textContent = low.valid ? `raw ${low.raw}, ${Number(low.temp_c).toFixed(2)} C` : 'not set';
+      ids.tempCalHighPoint.textContent = high.valid ? `raw ${high.raw}, ${Number(high.temp_c).toFixed(2)} C` : 'not set';
+    }
+
     async function parseResponse(res) {
       let data;
       try {
@@ -1122,12 +1392,14 @@ namespace
         const status = await parseResponse(await fetch('/status'));
         showJson(status);
 
-        const [config, timeStatus] = await Promise.all([
+        const [config, timeStatus, temperatureStatus] = await Promise.all([
           parseResponse(await fetch('/config')),
-          parseResponse(await fetch('/time'))
+          parseResponse(await fetch('/time')),
+          parseResponse(await fetch('/temperature'))
         ]);
         showConfig(config);
         showTimeStatus(timeStatus);
+        showTemperatureStatus(temperatureStatus);
 
         try {
           const otaStatus = await parseResponse(await fetch('/ota/check'));
@@ -1139,6 +1411,15 @@ namespace
         showJson({ ok: false, error: err.error || 'Status request failed' });
       } finally {
         setBusy(false);
+      }
+    }
+
+    async function pollLiveStatus() {
+      try {
+        const status = await parseResponse(await fetch('/status'));
+        showJson(status);
+      } catch {
+        // Silent polling failures keep the page usable during reconnects.
       }
     }
 
@@ -1201,14 +1482,18 @@ namespace
       const hostname = ids.hostnameInput.value.trim();
       const mqttHost = ids.mqttHostInput.value.trim();
       const mqttPort = ids.mqttPortInput.value.trim();
+      const relayAutoOffText = ids.relayAutoOffMinutesInput.value.trim();
+      const relayAutoOffParsed = relayAutoOffText.length > 0 ? Number(relayAutoOffText) : currentRelayAutoOffMinutes;
+      const relayAutoOffMinutes = Number.isFinite(relayAutoOffParsed) ? Math.max(0, Math.floor(relayAutoOffParsed)) : currentRelayAutoOffMinutes;
       const mqttEnabled = !ids.mqttDisabledInput.checked;
       const otaAutoScheduleEnabled = !ids.otaAutoScheduleDisabledInput.checked;
       const wifiSsid = ids.wifiSsidInput.value.trim();
       const wifiPass = ids.wifiPassInput.value;
       const mqttEnabledChanged = mqttEnabled !== currentMqttEnabled;
       const otaAutoScheduleChanged = otaAutoScheduleEnabled !== currentOtaAutoScheduleEnabled;
+      const relayAutoOffChanged = relayAutoOffMinutes !== currentRelayAutoOffMinutes;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !otaAutoScheduleChanged) {
+      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !otaAutoScheduleChanged && !relayAutoOffChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -1221,6 +1506,7 @@ namespace
         if (mqttPort) body.set('mqtt_port', mqttPort);
         if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
         if (otaAutoScheduleChanged) body.set('ota_auto_schedule_enabled', otaAutoScheduleEnabled ? '1' : '0');
+        if (relayAutoOffChanged) body.set('relay_auto_off_minutes', String(relayAutoOffMinutes));
         if (wifiSsid) body.set('wifi_ssid', wifiSsid);
         if (wifiPass.trim()) body.set('wifi_pass', wifiPass);
 
@@ -1239,6 +1525,45 @@ namespace
         showConfig(config);
       } catch (err) {
         showJson({ ok: false, error: err.error || 'Configuration save failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function captureTemperaturePoint(endpoint, inputElement) {
+      const tempText = inputElement.value.trim();
+      const temp = Number(tempText);
+      if (!Number.isFinite(temp)) {
+        showJson({ ok: false, error: 'Enter a valid reference temperature' });
+        return;
+      }
+
+      setBusy(true);
+      try {
+        const body = new URLSearchParams();
+        body.set('temp_c', String(temp));
+        const data = await parseResponse(await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString()
+        }));
+        showTemperatureStatus(data);
+        showJson({ ok: true, command: endpoint.includes('low') ? 'temp-capture-low' : 'temp-capture-high' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Calibration capture failed' });
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function resetTemperatureCalibration() {
+      setBusy(true);
+      try {
+        const data = await parseResponse(await fetch('/temperature/calibration/reset', { method: 'POST' }));
+        showTemperatureStatus(data);
+        showJson({ ok: true, command: 'temp-calibration-reset' });
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Calibration reset failed' });
       } finally {
         setBusy(false);
       }
@@ -1365,9 +1690,13 @@ namespace
     document.getElementById('btnScheduleReset').addEventListener('click', resetScheduleForm);
     document.getElementById('btnOtaCheck').addEventListener('click', checkOtaUpdate);
     document.getElementById('btnOtaUpdate').addEventListener('click', installOtaUpdate);
+    document.getElementById('btnTempCaptureLow').addEventListener('click', () => captureTemperaturePoint('/temperature/capture-low', ids.tempLowInput));
+    document.getElementById('btnTempCaptureHigh').addEventListener('click', () => captureTemperaturePoint('/temperature/capture-high', ids.tempHighInput));
+    document.getElementById('btnTempResetCal').addEventListener('click', resetTemperatureCalibration);
 
     resetScheduleForm();
     refreshStatus();
+    setInterval(pollLiveStatus, 1000);
   </script>
 </body>
 </html>
@@ -1442,6 +1771,14 @@ void WebControlServer::registerRoutes()
              { handleOtaCheck(); });
   gServer.on("/ota/update", HTTP_POST, [this]()
              { handleOtaUpdate(); });
+  gServer.on("/temperature", HTTP_GET, [this]()
+             { handleTemperatureStatus(); });
+  gServer.on("/temperature/capture-low", HTTP_POST, [this]()
+             { handleTemperatureCaptureLow(); });
+  gServer.on("/temperature/capture-high", HTTP_POST, [this]()
+             { handleTemperatureCaptureHigh(); });
+  gServer.on("/temperature/calibration/reset", HTTP_POST, [this]()
+             { handleTemperatureCalibrationReset(); });
   gServer.on("/favicon.ico", HTTP_GET, []()
              { gServer.send(204); });
   gServer.on("/wifi/scan", HTTP_GET, [this]()
@@ -1558,6 +1895,44 @@ void WebControlServer::handleStatus()
   json += FIRMWARE_VERSION;
   json += "\",\"uptime_ms\":";
   json += millis();
+  json += ",\"relay_auto_off_minutes\":";
+  json += context.getRelayAutoOffMinutes != nullptr ? context.getRelayAutoOffMinutes() : 0;
+  json += ",\"relay_auto_off_armed\":";
+  json += context.getRelayAutoOffArmed != nullptr ? (context.getRelayAutoOffArmed() ? "true" : "false") : "false";
+  json += ",\"relay_auto_off_remaining_s\":";
+  json += context.getRelayAutoOffRemainingSeconds != nullptr ? context.getRelayAutoOffRemainingSeconds() : 0;
+  json += ",\"temperature_probe_present\":";
+  json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
+  json += ",\"temperature_probe_raw\":";
+  if (context.getTemperatureProbeRaw != nullptr)
+  {
+    json += context.getTemperatureProbeRaw();
+  }
+  else
+  {
+    json += -1;
+  }
+  json += ",\"current_temperature_raw\":";
+  if (context.getCurrentTemperatureRaw != nullptr)
+  {
+    json += context.getCurrentTemperatureRaw();
+  }
+  else
+  {
+    json += -1;
+  }
+  json += ",\"current_temperature_c\":";
+  if (context.getCurrentTemperatureC != nullptr)
+  {
+    const float currentTempC = context.getCurrentTemperatureC();
+    json += isnan(currentTempC) ? "null" : String(currentTempC, 2);
+  }
+  else
+  {
+    json += "null";
+  }
+  json += ",\"temperature_calibration_ready\":";
+  json += context.getTemperatureCalibrationReady != nullptr ? (context.getTemperatureCalibrationReady() ? "true" : "false") : "false";
   json += "}";
   gServer.send(200, "application/json", json);
 }
@@ -1630,6 +2005,26 @@ void WebControlServer::handleConfigSave()
     if (!context.setOtaAutoScheduleEnabled(parseBoolArg(otaAutoScheduleEnabledText), error))
     {
       sendError(400, error.length() > 0 ? error.c_str() : "Failed to update OTA auto schedule setting");
+      return;
+    }
+
+    settingsSaved = true;
+  }
+
+  const String relayAutoOffMinutesText = gServer.arg("relay_auto_off_minutes");
+  if (relayAutoOffMinutesText.length() > 0)
+  {
+    if (context.setRelayAutoOffMinutes == nullptr)
+    {
+      sendError(500, "Relay auto-off setter is not available");
+      return;
+    }
+
+    const int relayAutoOffMinutes = relayAutoOffMinutesText.toInt();
+    String error;
+    if (!context.setRelayAutoOffMinutes(relayAutoOffMinutes, error))
+    {
+      sendError(400, error.length() > 0 ? error.c_str() : "Failed to update relay auto-off setting");
       return;
     }
 
@@ -2006,6 +2401,104 @@ void WebControlServer::handleOtaUpdate()
   gServer.send(200, "application/json", json);
   delay(150);
   ESP.restart();
+}
+
+void WebControlServer::handleTemperatureStatus()
+{
+  Serial.println("[HTTP] GET /temperature");
+  gServer.send(200, "application/json", buildTemperatureJson(context));
+}
+
+void WebControlServer::handleTemperatureCaptureLow()
+{
+  Serial.println("[HTTP] POST /temperature/capture-low");
+
+  if (context.captureLowCalibration == nullptr)
+  {
+    sendError(500, "Temperature low capture is unavailable");
+    return;
+  }
+
+  const String tempText = gServer.arg("temp_c");
+  if (tempText.length() == 0)
+  {
+    sendError(400, "Missing temp_c");
+    return;
+  }
+
+  String error;
+  if (!context.captureLowCalibration(tempText.toFloat(), error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Failed to capture low calibration");
+    return;
+  }
+
+  String json = buildTemperatureJson(context);
+  if (json.endsWith("}"))
+  {
+    json.remove(json.length() - 1);
+    json += ",\"message\":\"Low calibration captured\"}";
+  }
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleTemperatureCaptureHigh()
+{
+  Serial.println("[HTTP] POST /temperature/capture-high");
+
+  if (context.captureHighCalibration == nullptr)
+  {
+    sendError(500, "Temperature high capture is unavailable");
+    return;
+  }
+
+  const String tempText = gServer.arg("temp_c");
+  if (tempText.length() == 0)
+  {
+    sendError(400, "Missing temp_c");
+    return;
+  }
+
+  String error;
+  if (!context.captureHighCalibration(tempText.toFloat(), error))
+  {
+    sendError(400, error.length() > 0 ? error.c_str() : "Failed to capture high calibration");
+    return;
+  }
+
+  String json = buildTemperatureJson(context);
+  if (json.endsWith("}"))
+  {
+    json.remove(json.length() - 1);
+    json += ",\"message\":\"High calibration captured\"}";
+  }
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleTemperatureCalibrationReset()
+{
+  Serial.println("[HTTP] POST /temperature/calibration/reset");
+
+  if (context.resetTemperatureCalibration == nullptr)
+  {
+    sendError(500, "Temperature calibration reset is unavailable");
+    return;
+  }
+
+  String error;
+  if (!context.resetTemperatureCalibration(error))
+  {
+    sendError(500, error.length() > 0 ? error.c_str() : "Failed to reset calibration");
+    return;
+  }
+
+  String json = buildTemperatureJson(context);
+  if (json.endsWith("}"))
+  {
+    json.remove(json.length() - 1);
+    json += ",\"message\":\"Calibration reset\"}";
+  }
+  gServer.send(200, "application/json", json);
 }
 
 void WebControlServer::handleWifiScan()
