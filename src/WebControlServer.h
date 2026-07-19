@@ -15,6 +15,7 @@ class MqttManager;
 class TimeSyncManager;
 class ScheduleManager;
 class OtaUpdateManager;
+class IndicatorLeds;
 
 using HostnameGetter = String (*)();
 using HostnameSetter = bool (*)(const String &hostname, String &error);
@@ -79,6 +80,7 @@ struct WebControlContext
     LedTestStatusGetter getWifiLedTestActive = nullptr;
     LedPolarityGetter getLedActiveHigh = nullptr;
     LedPolaritySetter setLedActiveHigh = nullptr;
+    IndicatorLeds *indicatorLeds = nullptr;
 };
 
 class WebControlServer
@@ -118,6 +120,11 @@ private:
     void handleRelayLedTest();
     void handleWifiLedTest();
     void handleAllLedTests();
+    void handleLedBrightnessGet();
+    void handleLedBrightnessSet();
+    void handleLedStripBrightnessSet();
+    void handleLedStatusGet();
+    void handleLedBootAnimation();
     void handleSetHostname();
     void handleNotFound();
 

@@ -83,6 +83,28 @@ namespace
 
         return false;
     }
+
+    bool parseUint8(const String &payload, uint8_t &value)
+    {
+        String normalized = payload;
+        normalized.trim();
+
+        char *endptr = nullptr;
+        long result = strtol(normalized.c_str(), &endptr, 10);
+
+        if (endptr == normalized.c_str() || *endptr != '\0')
+        {
+            return false;
+        }
+
+        if (result < 0 || result > 255)
+        {
+            return false;
+        }
+
+        value = static_cast<uint8_t>(result);
+        return true;
+    }
 }
 
 const DiscoveryEndpoint DISCOVERY_ENDPOINTS[] = {
@@ -150,6 +172,10 @@ bool mqttSetLed2(bool on);
 bool mqttGetLed2();
 bool mqttGetRelay();
 String mqttGetDeviceName();
+uint8_t mqttGetLedStripMasterBrightness();
+void mqttSetLedStripMasterBrightness(uint8_t brightness);
+bool mqttGetLedStripBootAnimation();
+bool mqttSetLedStripBootAnimation(bool active);
 
 String sanitizeHostname(const String &requested)
 {
@@ -550,6 +576,38 @@ void handleMqttOperation(const String &element, const String &operation, const S
         mqttManager.publishRelayState(relayController.isOn());
         return;
     }
+
+    if (element == "led_strip")
+    {
+        if (operation == "set" && element == "master_brightness")
+        {
+            uint8_t brightness = 0;
+            if (parseUint8(payload, brightness))
+            {
+                indicatorLeds.setMasterBrightness(brightness);
+            }
+            return;
+        }
+
+        if (operation == "get" || operation == "state")
+        {
+            mqttManager.publishLedStripState();
+            return;
+        }
+
+        if (operation == "toggle" && element == "boot_animation")
+        {
+            if (indicatorLeds.isBootAnimationActive())
+            {
+                indicatorLeds.bootAnimationComplete();
+            }
+            else
+            {
+                indicatorLeds.startBootAnimation(millis());
+            }
+            return;
+        }
+    }
 }
 
 bool mqttSetLed1(bool on)
@@ -580,6 +638,34 @@ bool mqttGetRelay()
 String mqttGetDeviceName()
 {
     return deviceHostname;
+}
+
+uint8_t mqttGetLedStripMasterBrightness()
+{
+    return indicatorLeds.getMasterBrightness();
+}
+
+void mqttSetLedStripMasterBrightness(uint8_t brightness)
+{
+    indicatorLeds.setMasterBrightness(brightness);
+}
+
+bool mqttGetLedStripBootAnimation()
+{
+    return indicatorLeds.isBootAnimationActive();
+}
+
+bool mqttSetLedStripBootAnimation(bool active)
+{
+    unsigned long now = millis();
+    if (active)
+    {
+        return indicatorLeds.startBootAnimation(now);
+    }
+    else
+    {
+        indicatorLeds.bootAnimationComplete();
+    }
 }
 
 bool startRelayLedTest()
@@ -976,6 +1062,7 @@ void setup()
     webContext.relay = &relayController;
     webContext.wifi = &wifiManager;
     webContext.mqtt = &mqttManager;
+    webContext.indicatorLeds = &indicatorLeds;
     webContext.timeSync = &timeSyncManager;
     webContext.schedule = &scheduleManager;
     webContext.ota = &otaUpdateManager;
@@ -1030,6 +1117,7 @@ void setup()
     mqttManager.setOperationHandler(handleMqttOperation);
     mqttManager.setElementHandlers(mqttGetRelay, mqttSetLed1, mqttGetLed1, mqttSetLed2, mqttGetLed2, mqttGetDeviceName);
     mqttManager.setTemperatureTelemetryGetters(getTemperatureProbePresent, getTemperatureProbeRaw, getCurrentTemperatureRaw, getCurrentTemperatureC);
+    mqttManager.setLedStripHandlers(mqttGetLedStripMasterBrightness, mqttSetLedStripMasterBrightness, mqttGetLedStripBootAnimation, mqttSetLedStripBootAnimation);
 
     temperatureProbeManager.begin();
 

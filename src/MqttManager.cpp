@@ -111,6 +111,43 @@ void MqttManager::setElementHandlers(BoolGetter relayGetter, BoolSetter led1Sett
     getDeviceName = deviceNameGetter;
 }
 
+void MqttManager::setLedStripHandlers(Uint8Getter masterBrightnessGetter, Uint8Setter masterBrightnessSetter, BoolGetter bootAnimationGetter, BoolSetter bootAnimationSetter)
+{
+    getLedStripMasterBrightness = masterBrightnessGetter;
+    setLedStripMasterBrightness = masterBrightnessSetter;
+    getLedStripBootAnimation = bootAnimationGetter;
+    setLedStripBootAnimation = bootAnimationSetter;
+}
+
+void MqttManager::publishLedStripState()
+{
+    if (getLedStripMasterBrightness == nullptr || setLedStripMasterBrightness == nullptr ||
+        getLedStripBootAnimation == nullptr || setLedStripBootAnimation == nullptr)
+    {
+        return;
+    }
+
+    uint8_t masterBrightness = 0;
+    bool bootAnimation = false;
+
+    if (getLedStripMasterBrightness())
+    {
+        masterBrightness = getLedStripMasterBrightness();
+    }
+
+    if (getLedStripBootAnimation())
+    {
+        bootAnimation = getLedStripBootAnimation();
+    }
+
+    String json = "{";
+    json += String("\"master_brightness\":") + String(masterBrightness) + ",";
+    json += String("\"boot_animation\":") + (bootAnimation ? "true" : "false");
+    json += "}";
+
+    publishElementState("led_strip", json);
+}
+
 void MqttManager::setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter)
 {
     getProbePresent = probePresentGetter;

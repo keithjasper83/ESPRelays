@@ -12,6 +12,7 @@
 
 #include "AppConfig.h"
 #include "CommandRouter.h"
+#include "IndicatorLeds.h"
 #include "MqttManager.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
@@ -234,11 +235,59 @@ namespace
       json += "0.00";
     }
     json += ",";
-    json += "\"nvs_health\":\"";
-    json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
-    json += "\"";
-    json += "}";
-    return json;
+json += "\"nvs_health\":\"";
+json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
+json += "\"";
+json += ",\"led_strip_enabled\":";
+json += (LED_STRIP_PIN > 0) ? "true" : "false";
+json += ",\"led_strip_count\":";
+json += LED_STRIP_COUNT;
+json += ",\"led_strip_master_brightness\":";
+if (context.indicatorLeds != nullptr)
+{
+  json += context.indicatorLeds->getMasterBrightness();
+}
+else
+{
+  json += LED_STRIP_MASTER_BRIGHTNESS_DEFAULT;
+}
+json += ",\"led_strip_hard_limit\":";
+json += LED_STRIP_HARD_LIMIT_BRIGHTNESS;
+json += ",\"led_strip_boot_animation\":";
+if (context.indicatorLeds != nullptr)
+{
+  json += context.indicatorLeds->isBootAnimationActive() ? "true" : "false";
+}
+else
+{
+  json += LED_STRIP_BOOT_ANIMATION_DEFAULT;
+}
+json += ",\"led_strip_led_brightness\":[";
+if (context.indicatorLeds != nullptr)
+{
+  for (uint8_t i = 0; i < LED_STRIP_COUNT; i++)
+  {
+    json += context.indicatorLeds->getPerLedBrightness(i);
+    if (i < LED_STRIP_COUNT - 1)
+    {
+      json += ",";
+    }
+  }
+}
+else
+{
+  for (uint8_t i = 0; i < LED_STRIP_COUNT; i++)
+  {
+    json += LED_STRIP_MASTER_BRIGHTNESS_DEFAULT;
+    if (i < LED_STRIP_COUNT - 1)
+    {
+      json += ",";
+    }
+  }
+}
+json += "]";
+json += "}";
+return json;
   }
 
   String buildTemperatureJson(const WebControlContext &context)
@@ -714,6 +763,7 @@ namespace
           <button id="btnRelayLedTest" class="refresh">TEST RELAY LED</button>
           <button id="btnWifiLedTest" class="refresh">TEST WI-FI LED</button>
           <button id="btnAllLedTests" class="toggle">TEST BOTH LEDS</button>
+          <button id="btnLedBootAnimation" class="refresh">BOOT ANIMATION</button>
         </div>
         <div class="kv" style="margin-top:10px"><strong>Relay LED test active:</strong> <span id="relayLedTestActive">no</span></div>
         <div class="kv"><strong>Wi-Fi LED test active:</strong> <span id="wifiLedTestActive">no</span></div>
@@ -798,6 +848,65 @@ namespace
           </div>
           <div class="settingsValue">
             <input id="ledActiveHighInput" type="checkbox" />
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>LED Strip Master Brightness</span>
+            <small>Global brightness for all LEDs (0-<span id="ledStripHardLimit">204</span>). Max value is hard-limited for safety.</small>
+          </div>
+          <div class="settingsValue">
+            <input id="ledStripMasterBrightnessInput" type="number" min="0" max="204" value="128" />
+            <span id="ledStripMasterBrightness">128</span>
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>Per-LED Brightness (0-<span id="ledStripHardLimit">204</span>)</span>
+            <small>Individual brightness for each LED. Combined with master brightness with hard limit applied.</small>
+          </div>
+          <div class="settingsValue">
+            <div id="ledStripLedBrightnessArray" class="kv" style="margin-top:5px">128, 128, 128, 128, 128</div>
+            <div id="ledStripLedBrightnessInputs" style="margin-top:5px">
+              <span>LED 0: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
+              <span>LED 1: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
+              <span>LED 2: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
+              <span>LED 3: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
+              <span>LED 4: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
+            </div>
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>LED Strip Boot Animation</span>
+            <small>Progressive fill animation on boot (2s). Tap to start/stop.</small>
+          </div>
+          <div class="settingsValue">
+            <span id="ledStripBootAnimation">inactive</span>
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>LED Strip Status</span>
+            <small>LED 0=Health, LED 1=Network, LED 2=Controller, LED 3=Relay Activity, LED 4=Activity/Attention</small>
+          </div>
+          <div class="settingsValue">
+            <div id="ledStripStatus" class="kv" style="margin-top:5px">
+              <span>LED 0 (Health): </span><span id="ledStatus0">Off</span>
+              <span>LED 1 (Network): </span><span id="ledStatus1">Off</span>
+              <span>LED 2 (Controller): </span><span id="ledStatus2">Off</span>
+              <span>LED 3 (Relay): </span><span id="ledStatus3">Off</span>
+              <span>LED 4 (Activity): </span><span id="ledStatus4">Off</span>
+            </div>
+          </div>
+        </div>
+        <div class="settingsRow">
+          <div class="settingsLabel">
+            <span>LED Strip Info</span>
+            <small>5-pixel WS2812B on GPIO 8. Hard brightness limit: 204 (80% of 255) for safety.</small>
+          </div>
+          <div class="settingsValue">
+            <span id="ledStripCount">5</span> LEDs | GPIO 8 | Max brightness: <span id="ledStripHardLimit">204</span>
           </div>
         </div>
         <div class="settingsRow">
@@ -1155,6 +1264,7 @@ namespace
         document.getElementById('btnRelayLedTest'),
         document.getElementById('btnWifiLedTest'),
         document.getElementById('btnAllLedTests'),
+        document.getElementById('btnLedBootAnimation'),
         document.getElementById('btnSaveConfig'),
         document.getElementById('btnScanWifi'),
         document.getElementById('btnSaveTimeConfig'),
@@ -1170,7 +1280,8 @@ namespace
         document.getElementById('btnTempTrimMinus02'),
         document.getElementById('btnTempTrimPlus02'),
         document.getElementById('btnTempTrimPlus1'),
-        document.getElementById('btnTempTrimReset')
+        document.getElementById('btnTempTrimReset'),
+        document.getElementById('btnLedBootAnimation')
       ]
     };
 
@@ -1214,6 +1325,70 @@ namespace
       if (typeof obj.wifi_led_test_active !== 'undefined') {
         ids.wifiLedTestActive.textContent = obj.wifi_led_test_active ? 'yes' : 'no';
       }
+    }
+
+function updateMasterBrightness(brightness) {
+      const brightnessNum = parseInt(brightness);
+      if (isNaN(brightnessNum) || brightnessNum < 0 || brightnessNum > LED_STRIP_HARD_LIMIT_BRIGHTNESS) {
+        alert('Brightness must be between 0 and ' + LED_STRIP_HARD_LIMIT_BRIGHTNESS);
+        return;
+      }
+      fetch('/led/brightness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brightness: brightnessNum })
+      }).then(res => res.json()).then(data => {
+        if (data.ok) {
+          ids.ledStripMasterBrightness.textContent = data.master_brightness;
+          ids.ledStripMasterBrightnessInput.value = data.master_brightness;
+        } else {
+          alert(data.error || 'Failed to set brightness');
+        }
+      });
+    }
+
+function updatePerLedBrightness(e) {
+      const inputs = document.querySelectorAll('#ledStripLedBrightnessInputs input');
+      const brightnessArray = [];
+      for (let i = 0; i < inputs.length; i++) {
+        const val = parseInt(inputs[i].value);
+        if (isNaN(val) || val < 0 || val > LED_STRIP_HARD_LIMIT_BRIGHTNESS) {
+          alert('Brightness must be between 0 and ' + LED_STRIP_HARD_LIMIT_BRIGHTNESS);
+          return;
+        }
+        brightnessArray.push(val);
+      }
+      
+      // Update each LED brightness
+      for (let i = 0; i < brightnessArray.length; i++) {
+        fetch('/led/strip/brightness', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ index: i, brightness: brightnessArray[i] })
+        }).then(res => res.json()).then(data => {
+          if (!data.ok) {
+            alert(data.error || 'Failed to set LED brightness');
+          }
+        });
+      }
+      
+      // Update display
+      ids.ledStripLedBrightnessArray.textContent = brightnessArray.join(', ');
+    }
+
+function runLedBootAnimation() {
+      fetch('/led/boot-animation', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        if (data.ok) {
+          document.getElementById('ledStripBootAnimation').textContent = data.command === 'led_boot_animation' ? 'active' : 'inactive';
+          if (data.message) {
+            alert(data.message);
+          }
+        } else {
+          alert(data.error || 'Failed to run boot animation');
+        }
+      });
     }
 
     function showJson(obj) {
@@ -1320,6 +1495,43 @@ namespace
         currentLedActiveHigh = !!obj.led_active_high;
         ids.ledActiveHighInput.checked = currentLedActiveHigh;
         ids.ledActiveHigh.textContent = currentLedActiveHigh ? 'yes' : 'no';
+      }
+      if (typeof obj.led_strip_enabled !== 'undefined') {
+        ids.ledStripEnabled.textContent = obj.led_strip_enabled ? 'yes' : 'no';
+      }
+      if (typeof obj.led_strip_count !== 'undefined') {
+        ids.ledStripCount.textContent = obj.led_strip_count;
+      }
+      if (typeof obj.led_strip_master_brightness !== 'undefined') {
+        ids.ledStripMasterBrightness.textContent = obj.led_strip_master_brightness;
+        ids.ledStripMasterBrightnessInput.value = obj.led_strip_master_brightness;
+      }
+      if (typeof obj.led_strip_hard_limit !== 'undefined') {
+        ids.ledStripHardLimit.textContent = obj.led_strip_hard_limit;
+      }
+      if (typeof obj.led_strip_boot_animation !== 'undefined') {
+        ids.ledStripBootAnimation.textContent = obj.led_strip_boot_animation ? 'active' : 'inactive';
+      }
+      if (typeof obj.led_strip_led_brightness !== 'undefined' && Array.isArray(obj.led_strip_led_brightness)) {
+        const brightnessArray = obj.led_strip_led_brightness;
+        ids.ledStripLedBrightnessArray.textContent = brightnessArray.join(', ');
+        for (let i = 0; i < brightnessArray.length; i++) {
+          if (ids.ledStripLedBrightnessInputs[i]) {
+            ids.ledStripLedBrightnessInputs[i].value = brightnessArray[i];
+          }
+        }
+      }
+      if (typeof obj.led_status !== 'undefined' && Array.isArray(obj.led_status)) {
+        const statusArray = obj.led_status;
+        const statusText = { 0: 'Off', 1: 'Connecting', 2: 'Configured', 3: 'Active', 4: 'Pulse' };
+        for (let i = 0; i < statusArray.length; i++) {
+          const statusNum = statusArray[i];
+          const statusTextVal = statusText[statusNum] || 'Off';
+          const statusElement = document.getElementById('ledStatus' + i);
+          if (statusElement) {
+            statusElement.textContent = statusTextVal;
+          }
+        }
       }
       showLedTestStatus(obj);
       if (typeof obj.ota_configured !== 'undefined') {
@@ -1951,6 +2163,9 @@ namespace
     document.getElementById('btnTempTrimPlus02').addEventListener('click', () => adjustTemperatureTrim(0.2));
     document.getElementById('btnTempTrimPlus1').addEventListener('click', () => adjustTemperatureTrim(1.0));
     document.getElementById('btnTempTrimReset').addEventListener('click', () => setTemperatureTrimOffset(0.0));
+    document.getElementById('btnLedBootAnimation').addEventListener('click', () => runLedBootAnimation());
+    document.getElementById('ledStripMasterBrightnessInput').addEventListener('change', (e) => updateMasterBrightness(e.target.value));
+    document.getElementById('ledStripLedBrightnessInputs').addEventListener('change', updatePerLedBrightness);
 
     resetScheduleForm();
     refreshStatus();
@@ -1998,61 +2213,81 @@ bool WebControlServer::isStarted() const
 void WebControlServer::registerRoutes()
 {
   gServer.on("/", HTTP_GET, [this]()
-             { handleRoot(); });
+              { handleRoot(); });
   gServer.on("/on", HTTP_POST, [this]()
-             { handleOn(); });
+              { handleOn(); });
   gServer.on("/off", HTTP_POST, [this]()
-             { handleOff(); });
+              { handleOff(); });
   gServer.on("/toggle", HTTP_POST, [this]()
-             { handleToggle(); });
+              { handleToggle(); });
   gServer.on("/test/relay-led", HTTP_POST, [this]()
-             { handleRelayLedTest(); });
+              { handleRelayLedTest(); });
   gServer.on("/test/wifi-led", HTTP_POST, [this]()
-             { handleWifiLedTest(); });
+              { handleWifiLedTest(); });
   gServer.on("/test/leds", HTTP_POST, [this]()
-             { handleAllLedTests(); });
+              { handleAllLedTests(); });
+  gServer.on("/led/brightness", HTTP_GET, [this]()
+              { handleLedBrightnessGet(); });
+  gServer.on("/led/brightness", HTTP_POST, [this]()
+              { handleLedBrightnessSet(); });
+  gServer.on("/led/strip/brightness", HTTP_POST, [this]()
+              { handleLedStripBrightnessSet(); });
+  gServer.on("/led/status", HTTP_GET, [this]()
+              { handleLedStatusGet(); });
+  gServer.on("/led/boot-animation", HTTP_POST, [this]()
+              { handleLedBootAnimation(); });
   gServer.on("/status", HTTP_GET, [this]()
-             { handleStatus(); });
+              { handleStatus(); });
   gServer.on("/config", HTTP_GET, [this]()
-             { handleConfig(); });
+              { handleConfig(); });
   gServer.on("/config", HTTP_POST, [this]()
-             { handleConfigSave(); });
+              { handleConfigSave(); });
   gServer.on("/time", HTTP_GET, [this]()
-             { handleTimeStatus(); });
+              { handleTimeStatus(); });
   gServer.on("/time/config", HTTP_POST, [this]()
-             { handleTimeConfigSave(); });
+              { handleTimeConfigSave(); });
   gServer.on("/time/sync", HTTP_POST, [this]()
-             { handleTimeSyncNow(); });
+              { handleTimeSyncNow(); });
   gServer.on("/schedule/add", HTTP_POST, [this]()
-             { handleScheduleAdd(); });
+              { handleScheduleAdd(); });
   gServer.on("/schedule/update", HTTP_POST, [this]()
-             { handleScheduleUpdate(); });
+              { handleScheduleUpdate(); });
   gServer.on("/schedule/delete", HTTP_POST, [this]()
-             { handleScheduleDelete(); });
+              { handleScheduleDelete(); });
   gServer.on("/ota/check", HTTP_GET, [this]()
-             { handleOtaCheck(); });
+              { handleOtaCheck(); });
   gServer.on("/ota/check", HTTP_POST, [this]()
-             { handleOtaCheck(); });
+              { handleOtaCheck(); });
   gServer.on("/ota/update", HTTP_POST, [this]()
-             { handleOtaUpdate(); });
+              { handleOtaUpdate(); });
   gServer.on("/temperature", HTTP_GET, [this]()
-             { handleTemperatureStatus(); });
+              { handleTemperatureStatus(); });
   gServer.on("/temperature/capture-low", HTTP_POST, [this]()
-             { handleTemperatureCaptureLow(); });
+              { handleTemperatureCaptureLow(); });
   gServer.on("/temperature/capture-high", HTTP_POST, [this]()
-             { handleTemperatureCaptureHigh(); });
+              { handleTemperatureCaptureHigh(); });
   gServer.on("/temperature/trim", HTTP_POST, [this]()
-             { handleTemperatureTrimOffset(); });
+              { handleTemperatureTrimOffset(); });
   gServer.on("/temperature/calibration/reset", HTTP_POST, [this]()
-             { handleTemperatureCalibrationReset(); });
+              { handleTemperatureCalibrationReset(); });
+  gServer.on("/led/brightness", HTTP_GET, [this]()
+              { handleLedBrightnessGet(); });
+  gServer.on("/led/brightness", HTTP_POST, [this]()
+              { handleLedBrightnessSet(); });
+  gServer.on("/led/strip/brightness", HTTP_POST, [this]()
+              { handleLedStripBrightnessSet(); });
+  gServer.on("/led/status", HTTP_GET, [this]()
+              { handleLedStatusGet(); });
+  gServer.on("/led/boot-animation", HTTP_POST, [this]()
+              { handleLedBootAnimation(); });
   gServer.on("/favicon.ico", HTTP_GET, []()
-             { gServer.send(204); });
+              { gServer.send(204); });
   gServer.on("/wifi/scan", HTTP_GET, [this]()
-             { handleWifiScan(); });
+              { handleWifiScan(); });
   gServer.on("/hostname", HTTP_POST, [this]()
-             { handleSetHostname(); });
+              { handleSetHostname(); });
   gServer.onNotFound([this]()
-                     { handleNotFound(); });
+                      { handleNotFound(); });
 }
 
 bool WebControlServer::dispatchCommand(const char *command) const
@@ -2911,6 +3146,213 @@ void WebControlServer::handleTemperatureCalibrationReset()
     json += ",\"message\":\"Calibration reset\"}";
   }
   gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleLedBrightnessGet()
+{
+  Serial.println("[HTTP] GET /led/brightness");
+
+  if (context.indicatorLeds == nullptr)
+  {
+    sendError(500, "LED manager is not available");
+    return;
+  }
+
+  uint8_t masterBrightness = context.indicatorLeds->getMasterBrightness();
+  uint8_t perLedBrightness[5] = {0, 0, 0, 0, 0};
+
+  for (uint8_t i = 0; i < 5; i++)
+  {
+    perLedBrightness[i] = context.indicatorLeds->getPerLedBrightness(i);
+  }
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"master_brightness\":";
+  json += masterBrightness;
+  json += ",\"per_led_brightness\":[";
+  json += perLedBrightness[0];
+  json += ",";
+  json += perLedBrightness[1];
+  json += ",";
+  json += perLedBrightness[2];
+  json += ",";
+  json += perLedBrightness[3];
+  json += ",";
+  json += perLedBrightness[4];
+  json += "]}";
+
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleLedBrightnessSet()
+{
+  Serial.println("[HTTP] POST /led/brightness");
+
+  if (context.indicatorLeds == nullptr)
+  {
+    sendError(500, "LED manager is not available");
+    return;
+  }
+
+  const String brightnessStr = gServer.arg("brightness");
+  if (brightnessStr.length() == 0)
+  {
+    sendError(400, "Missing brightness parameter");
+    return;
+  }
+
+  uint8_t brightness = brightnessStr.toInt();
+  if (brightness < 0 || brightness > LED_STRIP_HARD_LIMIT_BRIGHTNESS)
+  {
+    String error = "Brightness must be between 0 and ";
+    error += String(LED_STRIP_HARD_LIMIT_BRIGHTNESS);
+    sendError(400, error.c_str());
+    return;
+  }
+
+  if (!context.indicatorLeds->setMasterBrightness(brightness))
+  {
+    sendError(500, "Failed to set master brightness");
+    return;
+  }
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"command\":\"led_brightness\",";
+  json += "\"master_brightness\":";
+  json += brightness;
+  json += ",\"message\":\"Master brightness set to " + String(brightness) + "\"}";
+
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleLedStripBrightnessSet()
+{
+  Serial.println("[HTTP] POST /led/strip/brightness");
+
+  if (context.indicatorLeds == nullptr)
+  {
+    sendError(500, "LED manager is not available");
+    return;
+  }
+
+  const String indexStr = gServer.arg("index");
+  const String brightnessStr = gServer.arg("brightness");
+
+  if (indexStr.length() == 0 || brightnessStr.length() == 0)
+  {
+    sendError(400, "Missing index or brightness parameter");
+    return;
+  }
+
+  uint8_t index = indexStr.toInt();
+  if (index < 0 || index >= LED_STRIP_COUNT)
+  {
+    String error = "Index must be between 0 and ";
+    error += String(LED_STRIP_COUNT - 1);
+    sendError(400, error.c_str());
+    return;
+  }
+
+  uint8_t brightness = brightnessStr.toInt();
+  if (brightness < 0 || brightness > LED_STRIP_HARD_LIMIT_BRIGHTNESS)
+  {
+    String error = "Brightness must be between 0 and ";
+    error += String(LED_STRIP_HARD_LIMIT_BRIGHTNESS);
+    sendError(400, error.c_str());
+    return;
+  }
+
+  if (!context.indicatorLeds->setPerLedBrightness(index, brightness))
+  {
+    sendError(500, "Failed to set per-LED brightness");
+    return;
+  }
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"command\":\"led_per_led_brightness\",";
+  json += "\"index\":";
+  json += index;
+  json += ",\"brightness\":";
+  json += brightness;
+  json += ",\"message\":\"LED " + String(index) + " brightness set to " + String(brightness) + "\"}";
+
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleLedStatusGet()
+{
+  Serial.println("[HTTP] GET /led/status");
+
+  if (context.indicatorLeds == nullptr)
+  {
+    sendError(500, "LED manager is not available");
+    return;
+  }
+
+  String json = "{";
+  json += "\"ok\":true,";
+  json += "\"status\":[";
+  for (uint8_t i = 0; i < 5; i++)
+  {
+    int statusIndex = context.indicatorLeds->getStatusIndex(i);
+    const char *statusStr;
+    switch (statusIndex)
+    {
+        case 0: statusStr = "off"; break;
+        case 1: statusStr = "health_ok"; break;
+        case 2: statusStr = "health_degraded"; break;
+        case 3: statusStr = "health_fault"; break;
+        case 4: statusStr = "network_connecting"; break;
+        case 5: statusStr = "network_connected"; break;
+        case 6: statusStr = "network_failure"; break;
+        case 7: statusStr = "controller_configured"; break;
+        case 8: statusStr = "controller_connecting"; break;
+        case 9: statusStr = "controller_unavailable"; break;
+        case 10: statusStr = "relay_active"; break;
+        case 11: statusStr = "relay_idle"; break;
+        case 12: statusStr = "activity_pulse"; break;
+        case 13: statusStr = "activity_warning"; break;
+        case 14: statusStr = "activity_error"; break;
+        default: statusStr = "off";
+    }
+    json += statusStr;
+    if (i < 4)
+    {
+      json += ",";
+    }
+  }
+  json += "]}";
+
+  gServer.send(200, "application/json", json);
+}
+
+void WebControlServer::handleLedBootAnimation()
+{
+  Serial.println("[HTTP] POST /led/boot-animation");
+
+  if (context.indicatorLeds == nullptr)
+  {
+    sendError(500, "LED manager is not available");
+    return;
+  }
+
+  if (context.indicatorLeds->isBootAnimationActive())
+  {
+    context.indicatorLeds->bootAnimationComplete();
+    String json = "{\"ok\":true,\"command\":\"led_boot_animation\",\"message\":\"Animation stopped\"}";
+    gServer.send(200, "application/json", json);
+  }
+  else
+  {
+    unsigned long now = millis();
+    context.indicatorLeds->startBootAnimation(now);
+    String durationStr = String(LED_STRIP_BOOT_ANIMATION_DURATION_MS);
+    String json = "{\"ok\":true,\"command\":\"led_boot_animation\",\"message\":\"Animation started\",\"duration_ms\":" + durationStr + "}";
+    gServer.send(200, "application/json", json);
+  }
 }
 
 void WebControlServer::handleWifiScan()

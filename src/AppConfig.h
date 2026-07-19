@@ -41,6 +41,15 @@ constexpr int TEMP_PROBE_PRESENT_MIN_RAW = 200;
 constexpr int TEMP_PROBE_PRESENT_MAX_RAW = 3900;
 constexpr uint32_t TEMP_PROBE_SAMPLE_INTERVAL_MS = 1000;
 
+// Addressable LED strip configuration (optional, GPIO 8 safe)
+constexpr uint8_t LED_STRIP_PIN = 8;
+constexpr uint8_t LED_STRIP_COUNT = 5;
+constexpr char LED_STRIP_PROTOCOL[] = "WS2812B";
+constexpr uint8_t LED_STRIP_MASTER_BRIGHTNESS_DEFAULT = 128;  // 50% default
+constexpr uint8_t LED_STRIP_HARD_LIMIT_BRIGHTNESS = 204;      // 80% of 255, non-bypassable
+constexpr bool LED_STRIP_BOOT_ANIMATION_DEFAULT = true;
+constexpr uint32_t LED_STRIP_BOOT_ANIMATION_DURATION_MS = 2000;  // 2 seconds
+
 constexpr char WIFI_SSID[] = WIFI_SSID_DEFAULT;
 constexpr char WIFI_PASS[] = WIFI_PASS_DEFAULT;
 

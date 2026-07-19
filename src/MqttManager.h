@@ -21,6 +21,8 @@ public:
     using StringGetter = String (*)();
     using IntGetter = int (*)();
     using FloatGetter = float (*)();
+    using Uint8Getter = uint8_t (*)();
+    using Uint8Setter = void (*)(uint8_t value);
 
     MqttManager();
 
@@ -29,12 +31,14 @@ public:
     void publishRelayState(bool relayOn);
     void publishLed1State(bool on);
     void publishLed2State(bool on);
+    void publishLedStripState();
     void publishDeviceState();
     void publishStatusAndTemperature(bool relayOn);
     void setEnabled(bool enabled);
     bool isEnabled() const;
     void setOperationHandler(OperationHandler handler);
     void setElementHandlers(BoolGetter relayGetter, BoolSetter led1Setter, BoolGetter led1Getter, BoolSetter led2Setter, BoolGetter led2Getter, StringGetter deviceNameGetter);
+    void setLedStripHandlers(Uint8Getter masterBrightnessGetter, Uint8Setter masterBrightnessSetter, BoolGetter bootAnimationGetter, BoolSetter bootAnimationSetter);
     void setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter);
     void setClientId(const String &clientId);
     void setServer(const String &host, int port);
@@ -85,6 +89,10 @@ private:
     BoolSetter setLed2State = nullptr;
     BoolGetter getLed2State = nullptr;
     StringGetter getDeviceName = nullptr;
+    Uint8Getter getLedStripMasterBrightness = nullptr;
+    Uint8Setter setLedStripMasterBrightness = nullptr;
+    BoolGetter getLedStripBootAnimation = nullptr;
+    BoolSetter setLedStripBootAnimation = nullptr;
     BoolGetter getProbePresent = nullptr;
     IntGetter getProbeRaw = nullptr;
     IntGetter getCurrentProbeRaw = nullptr;
