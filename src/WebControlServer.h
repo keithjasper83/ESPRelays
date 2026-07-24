@@ -28,6 +28,7 @@ using RelayAutoOffMinutesSetter = bool (*)(int minutes, String &error);
 using RelayAutoOffRemainingSecondsGetter = long (*)();
 using RelayAutoOffArmedGetter = bool (*)();
 using TemperatureProbePresentGetter = bool (*)();
+using TemperatureMonitoringSetter = bool (*)(bool enabled, String &error);
 using TemperatureProbeRawGetter = int (*)();
 using TemperatureProbeFloatGetter = float (*)();
 using TemperatureCaptureSetter = bool (*)(float knownTempC, String &error);
@@ -58,6 +59,8 @@ struct WebControlContext
     RelayAutoOffArmedGetter getRelayAutoOffArmed = nullptr;
     RelayAutoOffRemainingSecondsGetter getRelayAutoOffRemainingSeconds = nullptr;
     TemperatureProbePresentGetter getTemperatureProbePresent = nullptr;
+    TemperatureProbePresentGetter getTemperatureMonitoringEnabled = nullptr;
+    TemperatureMonitoringSetter setTemperatureMonitoringEnabled = nullptr;
     TemperatureProbeRawGetter getTemperatureProbeRaw = nullptr;
     TemperatureProbeRawGetter getCurrentTemperatureRaw = nullptr;
     TemperatureProbeFloatGetter getCurrentTemperatureC = nullptr;
@@ -113,6 +116,7 @@ private:
     void handleOtaCheck();
     void handleOtaUpdate();
     void handleTemperatureStatus();
+    void handleTemperatureMonitoringEnabled();
     void handleTemperatureCaptureLow();
     void handleTemperatureCaptureHigh();
     void handleTemperatureCalibrationReset();

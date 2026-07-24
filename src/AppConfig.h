@@ -29,12 +29,17 @@ constexpr bool RELAY_ACTIVE_LOW = false;
 constexpr uint8_t RELAY_LED_PIN = 6;
 constexpr uint8_t WIFI_LED_PIN = 7;
 constexpr bool LED_ACTIVE_HIGH = true;
+constexpr bool DISCRETE_STATUS_LEDS_ENABLED = false;
 constexpr uint32_t WIFI_LED_BLINK_INTERVAL_MS = 5000;
 constexpr uint32_t WIFI_LED_PULSE_MS = 150;
 
 constexpr uint8_t RELAY_BUTTON_PIN = 3;
 constexpr uint8_t RESET_BUTTON_PIN = 10;
+// GPIO9 is the ESP32-C3 board's BOOT button. Hold it while the firmware is
+// running to restore all saved user settings, then reboot.
+constexpr uint8_t FACTORY_RESET_BUTTON_PIN = 9;
 constexpr uint32_t BUTTON_DEBOUNCE_MS = 50;
+constexpr uint32_t FACTORY_RESET_HOLD_MS = 5000;
 
 constexpr uint8_t TEMP_PROBE_ADC_PIN = 1;
 constexpr int TEMP_PROBE_PRESENT_MIN_RAW = 200;
@@ -58,6 +63,7 @@ constexpr char DEVICE_NAME_DEFAULT[] = "Home Relay";
 constexpr char DEVICE_TYPE_DEFAULT[] = "relay";
 constexpr char FIRMWARE_NAME[] = "esp-relay-controller";
 constexpr char FIRMWARE_VERSION[] = "2.1.3";
+constexpr uint32_t WIFI_CREDENTIALS_PROFILE_VERSION = 2;
 
 constexpr char MQTT_HOST[] = "192.168.0.50";
 constexpr int MQTT_PORT = 1883;

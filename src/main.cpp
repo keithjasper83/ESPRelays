@@ -8,6 +8,7 @@
 #include <ESPmDNS.h>
 #include <Preferences.h>
 #include <WiFi.h>
+#include <esp_bt.h>
 #include <ctype.h>
 #include <time.h>
 
@@ -53,6 +54,7 @@ bool lastDiscoveryWifiConnected = false;
 bool deviceHostnameNvsReady = false;
 bool otaAutoScheduleEnabled = true;
 bool otaAutoScheduleNvsReady = false;
+bool indicatorLedsStarted = false;
 
 namespace
 {
@@ -120,6 +122,7 @@ void printStatus();
 String getDeviceHostname();
 String getMqttClientId();
 String getNvsHealth();
+void disableBluetooth();
 bool updateDeviceHostname(const String &requested, String &error);
 void maintainMdns();
 void loadDeviceHostname();
@@ -200,12 +203,13 @@ void setupDebugLogging()
     pinMode(DEBUG_JUMPER_PIN, INPUT_PULLUP);
     delay(50);
 
+    // GPIO4 is pulled high internally; a fitted jumper to GND enables debug.
     debugLogging = digitalRead(DEBUG_JUMPER_PIN) == LOW;
 
     Serial.print("Debug jumper GPIO");
     Serial.print(DEBUG_JUMPER_PIN);
     Serial.print(": ");
-    Serial.println(debugLogging ? "FITTED - DEBUG ON" : "OPEN - DEBUG OFF");
+    Serial.println(debugLogging ? "FITTED - DEBUG ON" : "NOT FITTED - DEBUG OFF");
 }
 
 void debugLine(const char *msg)
@@ -228,6 +232,26 @@ void onRelayStateChanged(bool state)
 {
     mqttManager.publishRelayState(state);
     udpDiscovery.advertiseNow();
+}
+
+void disableBluetooth()
+{
+    const esp_err_t btMemRelease = esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
+
+    if (btMemRelease == ESP_OK)
+    {
+        Serial.println("[BT] Bluetooth memory released (BLE disabled).");
+        return;
+    }
+
+    if (btMemRelease == ESP_ERR_INVALID_STATE)
+    {
+        Serial.println("[BT] Bluetooth stack already active; memory release skipped.");
+        return;
+    }
+
+    Serial.print("[BT] Bluetooth disable request returned error: ");
+    Serial.println(btMemRelease);
 }
 
 void loadDeviceHostname()
@@ -277,6 +301,52 @@ void saveDeviceHostname(const String &hostname)
 void handleRelayButtonPress()
 {
     relayController.toggle();
+}
+
+bool clearUserSettings()
+{
+    constexpr const char *USER_SETTING_NAMESPACES[] = {
+        "device_cfg",
+        "wifi_cfg",
+        "mqtt_cfg",
+        "relay_cfg",
+        "time_cfg",
+        "sched_cfg",
+        "led_cfg",
+        "temp_probe"};
+
+    bool success = true;
+
+    for (const char *settingsNamespace : USER_SETTING_NAMESPACES)
+    {
+        Preferences preferences;
+        if (!preferences.begin(settingsNamespace, false))
+        {
+            Serial.print("[NVS] Failed to open settings namespace: ");
+            Serial.println(settingsNamespace);
+            success = false;
+            continue;
+        }
+
+        if (!preferences.clear())
+        {
+            Serial.print("[NVS] Failed to clear settings namespace: ");
+            Serial.println(settingsNamespace);
+            success = false;
+        }
+        preferences.end();
+    }
+
+    return success;
+}
+
+void handleFactoryResetButtonHold()
+{
+    Serial.println("BOOT button hold confirmed. Resetting saved user settings...");
+    const bool resetSucceeded = clearUserSettings();
+    Serial.println(resetSucceeded ? "User settings reset. Restarting ESP32..." : "Some settings could not be reset. Restarting ESP32...");
+    delay(100);
+    ESP.restart();
 }
 
 void handleResetButtonPress()
@@ -665,6 +735,7 @@ bool mqttSetLedStripBootAnimation(bool active)
     else
     {
         indicatorLeds.bootAnimationComplete();
+        return true;
     }
 }
 
@@ -791,6 +862,16 @@ bool dispatchScheduledCommand(const String &command)
 bool getTemperatureProbePresent()
 {
     return temperatureProbeManager.isPresent();
+}
+
+bool getTemperatureMonitoringEnabled()
+{
+    return temperatureProbeManager.isEnabled();
+}
+
+bool setTemperatureMonitoringEnabled(bool enabled, String &error)
+{
+    return temperatureProbeManager.setEnabled(enabled, error);
 }
 
 int getTemperatureProbeRaw()
@@ -1040,10 +1121,12 @@ void setup()
     Serial.println("Relay LED follows relay state. Wi-Fi LED stays on when disconnected and blinks every five seconds when connected.");
 
     loadDeviceHostname();
+    disableBluetooth();
 
     buttonManager.begin();
     buttonManager.setRelayButtonCallback(handleRelayButtonPress);
     buttonManager.setResetButtonCallback(handleResetButtonPress);
+    buttonManager.setFactoryResetCallback(handleFactoryResetButtonHold);
 
     relayController.begin();
     relayController.setStateChangedCallback(onRelayStateChanged);
@@ -1077,6 +1160,8 @@ void setup()
     webContext.getRelayAutoOffArmed = getRelayAutoOffArmed;
     webContext.getRelayAutoOffRemainingSeconds = getRelayAutoOffRemainingSeconds;
     webContext.getTemperatureProbePresent = getTemperatureProbePresent;
+    webContext.getTemperatureMonitoringEnabled = getTemperatureMonitoringEnabled;
+    webContext.setTemperatureMonitoringEnabled = setTemperatureMonitoringEnabled;
     webContext.getTemperatureProbeRaw = getTemperatureProbeRaw;
     webContext.getCurrentTemperatureRaw = getCurrentTemperatureRaw;
     webContext.getCurrentTemperatureC = getCurrentTemperatureC;
@@ -1100,9 +1185,6 @@ void setup()
     webContext.getLedActiveHigh = getLedActiveHigh;
     webContext.setLedActiveHigh = setLedActiveHigh;
     webControlServer.configure(webContext);
-
-    indicatorLeds.begin();
-    indicatorLeds.update(millis(), relayController.isOn(), wifiManager.isConnected());
 
     if (debugLogging)
     {
@@ -1170,7 +1252,16 @@ void loop()
 
     lastDiscoveryWifiConnected = wifiManager.isConnected();
 
-    indicatorLeds.update(millis(), relayController.isOn(), wifiManager.isConnected());
+    if (!indicatorLedsStarted && wifiManager.isConnected())
+    {
+        indicatorLeds.begin();
+        indicatorLedsStarted = true;
+    }
+
+    if (indicatorLedsStarted)
+    {
+        indicatorLeds.update(millis(), relayController.isOn(), wifiManager.isConnected());
+    }
     printTimestampLine();
     heartbeat();
 }

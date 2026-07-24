@@ -18,6 +18,99 @@ namespace
     constexpr char WIFI_PREF_NAMESPACE[] = "wifi_cfg";
     constexpr char WIFI_PREF_SSID[] = "ssid";
     constexpr char WIFI_PREF_PASSWORD[] = "pass";
+    constexpr char WIFI_PREF_PROFILE_VERSION[] = "profile_ver";
+
+    uint8_t gLastWifiDisconnectReason = WIFI_REASON_UNSPECIFIED;
+    bool gWifiLoadedFromNvs = false;
+    String gLastWifiTargetSsid;
+
+    const char *wifiCredentialSourceName()
+    {
+        return gWifiLoadedFromNvs ? "NVS" : "compiled defaults";
+    }
+
+    void logWifiCredentials(const String &ssid, const String &password)
+    {
+        Serial.print("WiFi SSID: ");
+        Serial.println(ssid);
+        Serial.print("WiFi password set: ");
+        Serial.println(password.length() > 0 ? "yes" : "no");
+        Serial.print("WiFi password length: ");
+        Serial.println(password.length());
+
+        uint32_t fingerprint = 2166136261UL;
+        for (size_t i = 0; i < password.length(); i++)
+        {
+            fingerprint ^= static_cast<uint8_t>(password[i]);
+            fingerprint *= 16777619UL;
+        }
+
+        Serial.print("WiFi password fingerprint: 0x");
+        char buffer[9];
+        snprintf(buffer, sizeof(buffer), "%08lX", static_cast<unsigned long>(fingerprint));
+        Serial.println(buffer);
+    }
+
+    const char *wifiDisconnectReasonName(uint8_t reason)
+    {
+        switch (reason)
+        {
+        case WIFI_REASON_UNSPECIFIED:
+            return "WIFI_REASON_UNSPECIFIED";
+        case WIFI_REASON_AUTH_EXPIRE:
+            return "WIFI_REASON_AUTH_EXPIRE";
+        case WIFI_REASON_AUTH_LEAVE:
+            return "WIFI_REASON_AUTH_LEAVE";
+        case WIFI_REASON_ASSOC_EXPIRE:
+            return "WIFI_REASON_ASSOC_EXPIRE";
+        case WIFI_REASON_ASSOC_TOOMANY:
+            return "WIFI_REASON_ASSOC_TOOMANY";
+        case WIFI_REASON_NOT_AUTHED:
+            return "WIFI_REASON_NOT_AUTHED";
+        case WIFI_REASON_NOT_ASSOCED:
+            return "WIFI_REASON_NOT_ASSOCED";
+        case WIFI_REASON_ASSOC_LEAVE:
+            return "WIFI_REASON_ASSOC_LEAVE";
+        case WIFI_REASON_AUTH_FAIL:
+            return "WIFI_REASON_AUTH_FAIL";
+        case WIFI_REASON_BEACON_TIMEOUT:
+            return "WIFI_REASON_BEACON_TIMEOUT";
+        case WIFI_REASON_NO_AP_FOUND:
+            return "WIFI_REASON_NO_AP_FOUND";
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+            return "WIFI_REASON_HANDSHAKE_TIMEOUT";
+        default:
+            return "UNKNOWN_WIFI_REASON";
+        }
+    }
+
+    void logWifiDisconnectEvent(WiFiEvent_t event, WiFiEventInfo_t info)
+    {
+        if (event != ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
+        {
+            return;
+        }
+
+        uint8_t reason = info.wifi_sta_disconnected.reason;
+        if (reason == 0)
+        {
+            reason = WIFI_REASON_UNSPECIFIED;
+        }
+
+        gLastWifiDisconnectReason = reason;
+
+        Serial.println();
+        Serial.println("***** WIFI DISCONNECTED *****");
+        Serial.print("Reason code: ");
+        Serial.println((int)reason);
+        Serial.print("Reason name: ");
+        Serial.println(wifiDisconnectReasonName(reason));
+        Serial.print("Target SSID: ");
+        Serial.println(gLastWifiTargetSsid.length() > 0 ? gLastWifiTargetSsid : WiFi.SSID());
+        Serial.print("Credential source: ");
+        Serial.println(wifiCredentialSourceName());
+        Serial.println("*****************************");
+    }
 }
 
 namespace
@@ -93,14 +186,20 @@ void WiFiManager::begin()
 {
     loadCredentials();
 
+    WiFi.onEvent(logWifiDisconnectEvent, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+
     if (debugLogging)
     {
         Serial.println();
         Serial.println("========== WIFI START ==========");
         Serial.print("Connecting to SSID: ");
         Serial.println(wifiSsid);
+        Serial.print("Credential source: ");
+        Serial.println(wifiCredentialSourceName());
+        logWifiCredentials(wifiSsid, wifiPassword);
     }
 
+    gLastWifiTargetSsid = wifiSsid;
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.setAutoReconnect(true);
@@ -271,6 +370,7 @@ void WiFiManager::forceReconnect()
     WiFi.disconnect(true);
     delay(500);
     loadCredentials();
+    gLastWifiTargetSsid = wifiSsid;
     WiFi.mode(WIFI_STA);
     WiFi.setSleep(false);
     WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
@@ -310,7 +410,7 @@ void WiFiManager::maintain()
         Serial.print(" ");
         Serial.print(statusName(currentStatus));
         Serial.print(" | target SSID=");
-        Serial.print(WIFI_SSID);
+        Serial.print(wifiSsid);
         Serial.print(" | connected SSID=");
         Serial.print(WiFi.SSID());
         Serial.print(" | IP=");
@@ -344,6 +444,7 @@ void WiFiManager::maintain()
 
         WiFi.disconnect(false);
         delay(200);
+        gLastWifiTargetSsid = wifiSsid;
         WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
 
         if (debugLogging)
@@ -367,6 +468,25 @@ void WiFiManager::loadCredentials()
         wifiSsid = WIFI_SSID;
         wifiPassword = WIFI_PASS;
         nvsReadyFlag = false;
+        gWifiLoadedFromNvs = false;
+        credentialsLoaded = true;
+        return;
+    }
+
+    const uint32_t storedProfileVersion = preferences.getUInt(WIFI_PREF_PROFILE_VERSION, 0);
+    const bool profileMatches = storedProfileVersion == WIFI_CREDENTIALS_PROFILE_VERSION;
+
+    if (!profileMatches)
+    {
+        Serial.println("[NVS] Wi-Fi profile version changed; applying compiled defaults.");
+        wifiSsid = WIFI_SSID;
+        wifiPassword = WIFI_PASS;
+        preferences.putString(WIFI_PREF_SSID, wifiSsid);
+        preferences.putString(WIFI_PREF_PASSWORD, wifiPassword);
+        preferences.putUInt(WIFI_PREF_PROFILE_VERSION, WIFI_CREDENTIALS_PROFILE_VERSION);
+        nvsReadyFlag = true;
+        gWifiLoadedFromNvs = false;
+        preferences.end();
         credentialsLoaded = true;
         return;
     }
@@ -374,11 +494,13 @@ void WiFiManager::loadCredentials()
     wifiSsid = preferences.getString(WIFI_PREF_SSID, WIFI_SSID);
     wifiPassword = preferences.getString(WIFI_PREF_PASSWORD, WIFI_PASS);
     nvsReadyFlag = true;
+    gWifiLoadedFromNvs = true;
     preferences.end();
 
     if (wifiSsid.length() == 0)
     {
         wifiSsid = WIFI_SSID;
+        gWifiLoadedFromNvs = false;
     }
 
     credentialsLoaded = true;
@@ -412,8 +534,30 @@ void WiFiManager::setCredentials(const String &ssid, const String &password)
 
     preferences.putString(WIFI_PREF_SSID, wifiSsid);
     preferences.putString(WIFI_PREF_PASSWORD, wifiPassword);
+    preferences.putUInt(WIFI_PREF_PROFILE_VERSION, WIFI_CREDENTIALS_PROFILE_VERSION);
     nvsReadyFlag = true;
+    gWifiLoadedFromNvs = true;
     preferences.end();
+}
+
+void WiFiManager::resetCredentialsToDefaults()
+{
+    Preferences preferences;
+    if (!preferences.begin(WIFI_PREF_NAMESPACE, false))
+    {
+        Serial.println("[NVS] Warning: failed to reset Wi-Fi credentials.");
+        return;
+    }
+
+    wifiSsid = WIFI_SSID;
+    wifiPassword = WIFI_PASS;
+    preferences.putString(WIFI_PREF_SSID, wifiSsid);
+    preferences.putString(WIFI_PREF_PASSWORD, wifiPassword);
+    preferences.putUInt(WIFI_PREF_PROFILE_VERSION, WIFI_CREDENTIALS_PROFILE_VERSION);
+    nvsReadyFlag = true;
+    gWifiLoadedFromNvs = false;
+    preferences.end();
+    WiFi.begin(wifiSsid.c_str(), wifiPassword.c_str());
 }
 
 String WiFiManager::ssid() const

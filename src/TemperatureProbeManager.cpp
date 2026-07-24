@@ -19,6 +19,7 @@ namespace
     constexpr char TEMP_PREF_HIGH_RAW[] = "high_raw";
     constexpr char TEMP_PREF_HIGH_TEMP[] = "high_temp";
     constexpr char TEMP_PREF_TRIM_OFFSET[] = "trim_ofs";
+    constexpr char TEMP_PREF_ENABLED[] = "enabled";
 
     bool isProbeInValidRange(int rawValue)
     {
@@ -48,6 +49,7 @@ void TemperatureProbeManager::loadCalibration()
     highPoint.raw = preferences.getInt(TEMP_PREF_HIGH_RAW, -1);
     highPoint.tempC = preferences.getFloat(TEMP_PREF_HIGH_TEMP, NAN);
     trimOffset = preferences.getFloat(TEMP_PREF_TRIM_OFFSET, 0.0f);
+    enabled = preferences.getBool(TEMP_PREF_ENABLED, true);
 
     preferences.end();
     calibrationLoaded = true;
@@ -69,6 +71,7 @@ bool TemperatureProbeManager::persistCalibration()
     preferences.putInt(TEMP_PREF_HIGH_RAW, highPoint.raw);
     preferences.putFloat(TEMP_PREF_HIGH_TEMP, highPoint.tempC);
     preferences.putFloat(TEMP_PREF_TRIM_OFFSET, trimOffset);
+    preferences.putBool(TEMP_PREF_ENABLED, enabled);
     preferences.end();
     return true;
 }
@@ -118,6 +121,14 @@ void TemperatureProbeManager::begin()
 
 void TemperatureProbeManager::maintain(unsigned long nowMs)
 {
+    if (!enabled)
+    {
+        probePresent = false;
+        lastRawReading = -1;
+        savedCurrentTemperatureRaw = -1;
+        return;
+    }
+
     if ((nowMs - lastSampleAtMs) < TEMP_PROBE_SAMPLE_INTERVAL_MS && lastSampleAtMs != 0)
     {
         return;
@@ -141,6 +152,27 @@ void TemperatureProbeManager::maintain(unsigned long nowMs)
 bool TemperatureProbeManager::isPresent() const
 {
     return probePresent;
+}
+
+bool TemperatureProbeManager::isEnabled() const
+{
+    return enabled;
+}
+
+bool TemperatureProbeManager::setEnabled(bool newEnabled, String &error)
+{
+    loadCalibration();
+    enabled = newEnabled;
+    probePresent = false;
+    lastRawReading = -1;
+    savedCurrentTemperatureRaw = -1;
+    lastSampleAtMs = 0;
+    if (!persistCalibration())
+    {
+        error = "Failed to save temperature monitoring setting";
+        return false;
+    }
+    return true;
 }
 
 int TemperatureProbeManager::rawReading() const
@@ -298,5 +330,5 @@ bool TemperatureProbeManager::setTrimOffsetC(float offsetC, String &error)
 
 bool TemperatureProbeManager::shouldRunTemperatureDependentFunctions() const
 {
-    return probePresent;
+    return enabled && probePresent;
 }

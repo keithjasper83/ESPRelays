@@ -18,6 +18,8 @@ public:
     void maintain(unsigned long nowMs);
 
     bool isPresent() const;
+    bool isEnabled() const;
+    bool setEnabled(bool enabled, String &error);
     int rawReading() const;
     int currentTemperatureRaw() const;
     float currentTemperatureC() const;
@@ -56,6 +58,7 @@ private:
     int lastRawReading = -1;
     int savedCurrentTemperatureRaw = -1;
     bool probePresent = false;
+    bool enabled = true;
     unsigned long lastSampleAtMs = 0;
     bool calibrationLoaded = false;
     float trimOffset = 0.0f;

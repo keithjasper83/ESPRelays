@@ -80,6 +80,24 @@ namespace
     return escaped;
   }
 
+  bool sendCompleteResponse(const char *contentType, const String &body)
+  {
+    WiFiClient client = gServer.client();
+    client.setNoDelay(true);
+
+    String response;
+    response.reserve(body.length() + 128);
+    response += "HTTP/1.1 200 OK\r\nContent-Type: ";
+    response += contentType;
+    response += "\r\nContent-Length: ";
+    response += body.length();
+    response += "\r\nConnection: close\r\n\r\n";
+    response += body;
+
+    return client.write(
+               reinterpret_cast<const uint8_t *>(response.c_str()), response.length()) == response.length();
+  }
+
   String buildConfigJson(const WebControlContext &context)
   {
     String json = "{";
@@ -292,6 +310,7 @@ return json;
 
   String buildTemperatureJson(const WebControlContext &context)
   {
+    const bool enabled = context.getTemperatureMonitoringEnabled != nullptr ? context.getTemperatureMonitoringEnabled() : true;
     const bool present = context.getTemperatureProbePresent != nullptr ? context.getTemperatureProbePresent() : false;
     const int raw = context.getTemperatureProbeRaw != nullptr ? context.getTemperatureProbeRaw() : -1;
     const int currentRaw = context.getCurrentTemperatureRaw != nullptr ? context.getCurrentTemperatureRaw() : -1;
@@ -306,7 +325,8 @@ return json;
     const float trimOffsetC = context.getTemperatureTrimOffsetC != nullptr ? context.getTemperatureTrimOffsetC() : 0.0f;
 
     String json = "{";
-    json += "\"ok\":true,";
+    json += "\"ok\":true,\"monitoring_enabled\":";
+    json += enabled ? "true," : "false,";
     json += "\"probe_present\":";
     json += present ? "true" : "false";
     json += ",\"probe_raw\":";
@@ -440,6 +460,21 @@ return json;
     error = "temp_unit must be C or F";
     return false;
   }
+
+  // Keep the root document small enough for the synchronous WebServer on the
+  // ESP32-C3. The full control API remains available at its existing routes.
+  const char WEB_SAFE_UI[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relay Control</title><style>
+body{font:16px system-ui,sans-serif;max-width:38rem;margin:3rem auto;padding:0 1rem;background:#111827;color:#e5e7eb}button{font:inherit;padding:.7rem 1rem;margin:.25rem;border:0;border-radius:.4rem}#on{background:#22c55e}#off{background:#ef4444}.card{padding:1rem;border:1px solid #374151;border-radius:.5rem;background:#1f2937}code{word-break:break-word}
+</style></head><body><h1>Relay Control</h1><div class="card"><p>Relay: <strong id="relay">Loading…</strong></p><p>Device: <span id="hostname">—</span></p><button id="on">Turn on</button><button id="off">Turn off</button><button id="toggle">Toggle</button></div><p id="message"></p><p><a href="/status">Status JSON</a> · <a href="/config">Configuration JSON</a></p><script>
+const message=document.querySelector('#message'),relay=document.querySelector('#relay'),hostname=document.querySelector('#hostname');
+async function status(){try{const r=await fetch('/status',{cache:'no-store'}),d=await r.json();relay.textContent=d.relay||'unknown';hostname.textContent=d.hostname||'—';message.textContent='';}catch(e){message.textContent='Unable to refresh status: '+e;}}
+async function command(path){try{const r=await fetch(path,{method:'POST'}),d=await r.json();if(!d.ok)throw Error(d.error||'request failed');await status();}catch(e){message.textContent='Command failed: '+e;}}
+document.querySelector('#on').onclick=()=>command('/on');document.querySelector('#off').onclick=()=>command('/off');document.querySelector('#toggle').onclick=()=>command('/toggle');status();setInterval(status,3000);
+</script></body></html>
+)HTML";
 
   const char WEB_UI[] PROGMEM = R"HTML(
 <!doctype html>
@@ -980,6 +1015,10 @@ return json;
     <div class="card">
       <div class="sectionTitle">Temperature Calibration</div>
       <p class="muted">Capture low/high calibration points from live ADC probe readings and compute calibrated temperature.</p>
+      <div class="settingsRow">
+        <div class="settingsLabel"><span>Temperature Monitoring</span><small>Disable on devices without a probe. This stops ADC sampling and is saved on this device.</small></div>
+        <div class="settingsValue"><label><input id="tempMonitoringEnabledInput" type="checkbox" checked /> Enabled</label> <button id="btnSaveTemperatureMonitoring" class="save">SAVE</button></div>
+      </div>
       <div class="kv"><strong>Probe detected:</strong> <span id="tempCalProbePresent">n/a</span></div>
       <div class="kv"><strong>Live raw ADC:</strong> <span id="tempCalLiveRaw">n/a</span></div>
       <div class="kv"><strong>Computed temperature:</strong> <span id="tempCalComputedC">n/a</span></div>
@@ -1232,6 +1271,7 @@ return json;
       tempCalComputedC: document.getElementById('tempCalComputedC'),
       tempCalReady: document.getElementById('tempCalReady'),
       tempCalTrimOffset: document.getElementById('tempCalTrimOffset'),
+      tempMonitoringEnabledInput: document.getElementById('tempMonitoringEnabledInput'),
       tempCalUnitInput: document.getElementById('tempCalUnitInput'),
       tempLowInput: document.getElementById('tempLowInput'),
       tempHighInput: document.getElementById('tempHighInput'),
@@ -1755,6 +1795,7 @@ function runLedBootAnimation() {
       }
 
       ids.tempCalProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
+      if (typeof obj.monitoring_enabled !== 'undefined') ids.tempMonitoringEnabledInput.checked = !!obj.monitoring_enabled;
       ids.tempProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
       ids.statusTempProbePresent.textContent = obj.probe_present ? 'yes' : 'no';
       const probeRaw = Number(obj.probe_raw);
@@ -1831,6 +1872,17 @@ function runLedBootAnimation() {
       } catch {
         // Silent polling failures keep the page usable during reconnects.
       }
+    }
+
+    async function saveTemperatureMonitoring() {
+      setBusy(true);
+      try {
+        const body = new URLSearchParams({ enabled: ids.tempMonitoringEnabledInput.checked ? '1' : '0' });
+        const data = await parseResponse(await fetch('/temperature/enabled', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body }));
+        showTemperatureStatus(data);
+      } catch (err) {
+        showJson({ ok: false, error: err.error || 'Failed to save temperature monitoring setting' });
+      } finally { setBusy(false); }
     }
 
     async function checkOtaUpdate() {
@@ -2163,6 +2215,7 @@ function runLedBootAnimation() {
     document.getElementById('btnTempTrimPlus02').addEventListener('click', () => adjustTemperatureTrim(0.2));
     document.getElementById('btnTempTrimPlus1').addEventListener('click', () => adjustTemperatureTrim(1.0));
     document.getElementById('btnTempTrimReset').addEventListener('click', () => setTemperatureTrimOffset(0.0));
+    document.getElementById('btnSaveTemperatureMonitoring').addEventListener('click', saveTemperatureMonitoring);
     document.getElementById('btnLedBootAnimation').addEventListener('click', () => runLedBootAnimation());
     document.getElementById('ledStripMasterBrightnessInput').addEventListener('change', (e) => updateMasterBrightness(e.target.value));
     document.getElementById('ledStripLedBrightnessInputs').addEventListener('change', updatePerLedBrightness);
@@ -2262,6 +2315,8 @@ void WebControlServer::registerRoutes()
               { handleOtaUpdate(); });
   gServer.on("/temperature", HTTP_GET, [this]()
               { handleTemperatureStatus(); });
+  gServer.on("/temperature/enabled", HTTP_POST, [this]()
+              { handleTemperatureMonitoringEnabled(); });
   gServer.on("/temperature/capture-low", HTTP_POST, [this]()
               { handleTemperatureCaptureLow(); });
   gServer.on("/temperature/capture-high", HTTP_POST, [this]()
@@ -2321,7 +2376,7 @@ void WebControlServer::sendError(int statusCode, const char *error)
 void WebControlServer::handleRoot()
 {
   Serial.println("[HTTP] GET /");
-  gServer.send_P(200, "text/html", WEB_UI);
+  gServer.send_P(200, "text/html; charset=utf-8", WEB_UI);
 }
 
 void WebControlServer::handleOn()
@@ -2403,9 +2458,6 @@ void WebControlServer::handleStatus()
   json += ",\"relay_auto_off_remaining_s\":";
   json += context.getRelayAutoOffRemainingSeconds != nullptr ? context.getRelayAutoOffRemainingSeconds() : 0;
   json += ",\"temperature_probe_present\":";
-  json += "\"led_active_high\":";
-  json += context.getLedActiveHigh != nullptr ? (context.getLedActiveHigh() ? "true" : "false") : (LED_ACTIVE_HIGH ? "true" : "false");
-  json += ",";
   json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
   json += ",\"temperature_probe_raw\":";
   if (context.getTemperatureProbeRaw != nullptr)
@@ -2449,7 +2501,10 @@ void WebControlServer::handleStatus()
   json += ",\"led_active_high\":";
   json += context.getLedActiveHigh != nullptr ? (context.getLedActiveHigh() ? "true" : "false") : (LED_ACTIVE_HIGH ? "true" : "false");
   json += "}";
-  gServer.send(200, "application/json", json);
+  if (!sendCompleteResponse("application/json", json))
+  {
+    Serial.println("[HTTP] Failed to deliver /status response");
+  }
 }
 
 void WebControlServer::handleConfig()
@@ -2957,6 +3012,32 @@ void WebControlServer::handleOtaUpdate()
 void WebControlServer::handleTemperatureStatus()
 {
   Serial.println("[HTTP] GET /temperature");
+  gServer.send(200, "application/json", buildTemperatureJson(context));
+}
+
+void WebControlServer::handleTemperatureMonitoringEnabled()
+{
+  Serial.println("[HTTP] POST /temperature/enabled");
+  if (context.setTemperatureMonitoringEnabled == nullptr)
+  {
+    sendError(500, "Temperature monitoring setting is unavailable");
+    return;
+  }
+
+  const String enabledText = gServer.arg("enabled");
+  if (enabledText != "0" && enabledText != "1")
+  {
+    sendError(400, "enabled must be 0 or 1");
+    return;
+  }
+
+  String error;
+  if (!context.setTemperatureMonitoringEnabled(enabledText == "1", error))
+  {
+    sendError(500, error.length() > 0 ? error.c_str() : "Failed to save temperature monitoring setting");
+    return;
+  }
+
   gServer.send(200, "application/json", buildTemperatureJson(context));
 }
 

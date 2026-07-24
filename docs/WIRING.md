@@ -19,6 +19,8 @@ Pins intentionally avoided for user control paths:
 
 **GPIO8**: Reserved for optional 5-pixel addressable LED strip (WS2812B/NeoPixel). Safe for this purpose.
 
+**GPIO9 / BOOT**: Keep free for the board's BOOT button. With the firmware running, hold it for 5 seconds to clear all saved user settings (including Wi-Fi) and reboot using the compiled defaults. Do not hold BOOT while pressing the physical RESET button: GPIO9 is a boot strapping pin and that combination enters the ROM downloader rather than the firmware.
+
 ## Active Pin Map
 
 | Signal | GPIO | Direction | Purpose | Notes |

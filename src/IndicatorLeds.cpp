@@ -54,8 +54,11 @@ Adafruit_NeoPixel strip(LED_STRIP_COUNT, LED_STRIP_PIN, NEO_GRB + NEO_KHZ800);
 void IndicatorLeds::begin()
 {
     // Initialize discrete LEDs
-    pinMode(RELAY_LED_PIN, OUTPUT);
-    pinMode(WIFI_LED_PIN, OUTPUT);
+    if (DISCRETE_STATUS_LEDS_ENABLED)
+    {
+        pinMode(RELAY_LED_PIN, OUTPUT);
+        pinMode(WIFI_LED_PIN, OUTPUT);
+    }
 
     // Initialize addressable strip if configured
 #ifdef LED_STRIP_PIN
@@ -86,7 +89,6 @@ void IndicatorLeds::begin()
     manualWifiLedOn = false;
     relayLedTestMode = false;
     wifiLedTestMode = false;
-    ledActiveHigh = true;
     relayLedTestEnd = 0;
     wifiLedTestEnd = 0;
     wifiPulseStart = 0;
@@ -196,12 +198,22 @@ bool IndicatorLeds::wifiLedTestActive() const
 
 void IndicatorLeds::writeRelayLed(bool on)
 {
+    if (!DISCRETE_STATUS_LEDS_ENABLED)
+    {
+        return;
+    }
+
     const bool level = ledActiveHigh ? on : !on;
     digitalWrite(RELAY_LED_PIN, level ? HIGH : LOW);
 }
 
 void IndicatorLeds::writeWifiLed(bool on)
 {
+    if (!DISCRETE_STATUS_LEDS_ENABLED)
+    {
+        return;
+    }
+
     const bool level = ledActiveHigh ? on : !on;
     digitalWrite(WIFI_LED_PIN, level ? HIGH : LOW);
 }

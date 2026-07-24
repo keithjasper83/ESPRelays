@@ -12,6 +12,7 @@ void ButtonManager::begin()
 {
     pinMode(RELAY_BUTTON_PIN, INPUT_PULLUP);
     pinMode(RESET_BUTTON_PIN, INPUT_PULLUP);
+    pinMode(FACTORY_RESET_BUTTON_PIN, INPUT_PULLUP);
 
     relayButtonLastReading = digitalRead(RELAY_BUTTON_PIN);
     relayButtonStableState = relayButtonLastReading;
@@ -20,6 +21,12 @@ void ButtonManager::begin()
     resetButtonLastReading = digitalRead(RESET_BUTTON_PIN);
     resetButtonStableState = resetButtonLastReading;
     resetButtonLastDebounceTime = millis();
+
+    factoryResetButtonLastReading = digitalRead(FACTORY_RESET_BUTTON_PIN);
+    factoryResetButtonStableState = factoryResetButtonLastReading;
+    factoryResetButtonLastDebounceTime = millis();
+    factoryResetButtonPressedAt = factoryResetButtonStableState == LOW ? millis() : 0;
+    factoryResetTriggered = false;
 }
 
 void ButtonManager::setRelayButtonCallback(ButtonCallback callback)
@@ -30,6 +37,11 @@ void ButtonManager::setRelayButtonCallback(ButtonCallback callback)
 void ButtonManager::setResetButtonCallback(ButtonCallback callback)
 {
     resetButtonCallback = callback;
+}
+
+void ButtonManager::setFactoryResetCallback(ButtonCallback callback)
+{
+    factoryResetCallback = callback;
 }
 
 void ButtonManager::pollButton(
@@ -83,4 +95,40 @@ void ButtonManager::update(unsigned long now)
         resetButtonLastDebounceTime,
         resetButtonCallback,
         now);
+
+    const bool factoryResetReading = digitalRead(FACTORY_RESET_BUTTON_PIN);
+
+    if (factoryResetReading != factoryResetButtonLastReading)
+    {
+        factoryResetButtonLastDebounceTime = now;
+        factoryResetButtonLastReading = factoryResetReading;
+    }
+
+    if (now - factoryResetButtonLastDebounceTime >= BUTTON_DEBOUNCE_MS &&
+        factoryResetReading != factoryResetButtonStableState)
+    {
+        factoryResetButtonStableState = factoryResetReading;
+
+        if (factoryResetButtonStableState == LOW)
+        {
+            factoryResetButtonPressedAt = now;
+            factoryResetTriggered = false;
+            Serial.println("BOOT button held: keep holding for 5 seconds to reset user settings.");
+        }
+        else
+        {
+            factoryResetButtonPressedAt = 0;
+            factoryResetTriggered = false;
+        }
+    }
+
+    if (factoryResetButtonStableState == LOW && !factoryResetTriggered &&
+        now - factoryResetButtonPressedAt >= FACTORY_RESET_HOLD_MS)
+    {
+        factoryResetTriggered = true;
+        if (factoryResetCallback != nullptr)
+        {
+            factoryResetCallback();
+        }
+    }
 }

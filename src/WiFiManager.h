@@ -18,6 +18,7 @@ public:
     void maintain();
     void forceReconnect();
     void setCredentials(const String &ssid, const String &password);
+    void resetCredentialsToDefaults();
     String ssid() const;
     bool nvsReady() const;
     void printFullDetails() const;
