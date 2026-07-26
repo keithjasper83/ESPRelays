@@ -33,7 +33,7 @@ public:
     void publishLed2State(bool on);
     void publishLedStripState();
     void publishDeviceState();
-    void publishStatusAndTemperature(bool relayOn);
+    void publishMatterbridgeRelay(bool relayOn);
     void setEnabled(bool enabled);
     bool isEnabled() const;
     void setOperationHandler(OperationHandler handler);
@@ -59,7 +59,9 @@ public:
 private:
     void rebuildTopics();
     void connectIfNeeded(bool relayOn);
-    void publishElementState(const String &element, const String &value);
+    void clearLegacyHomeRetainedTopics();
+    void publishMatterbridgeMetadata();
+    bool handleMatterbridgeWrite(const String &topic, const String &message);
 
     WiFiClient wifiClient;
     PubSubClient mqtt;
@@ -70,7 +72,6 @@ private:
     String mqttUser = MQTT_USER;
     String mqttPass = MQTT_PASS;
     String topicRoot;
-    String topicOpsWildcard;
     String topicRelayState;
     String topicLed1State;
     String topicLed2State;
@@ -78,8 +79,13 @@ private:
     String topicAvail;
     String topicStatus;
     String topicTemp;
+    String topicMatterbridgeConfig;
+    String topicMatterbridgeState;
+    String topicMatterbridgeSubscribe;
+    String topicMatterbridgeWrite;
     unsigned long lastMqttRetry = 0;
-    unsigned long lastTelemetryPublish = 0;
+    bool legacyHomeTopicsCleared = false;
+    bool matterbridgeStateDirty = false;
     bool settingsLoaded = false;
     bool nvsReadyFlag = false;
     bool mqttEnabled = true;

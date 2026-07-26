@@ -13,7 +13,6 @@ namespace
     constexpr char MQTT_PREF_USER[] = "user";
     constexpr char MQTT_PREF_PASS[] = "pass";
     constexpr unsigned long MQTT_RETRY_MS = 5000;
-    constexpr unsigned long MQTT_TELEMETRY_INTERVAL_MS = 60000;
 
     bool parseOnOff(const String &message, bool &on)
     {
@@ -86,7 +85,6 @@ void MqttManager::loadSettings()
 void MqttManager::rebuildTopics()
 {
     topicRoot = "home/" + mqttClientId;
-    topicOpsWildcard = topicRoot + "/+/+";
     topicRelayState = topicRoot + "/relay/state";
     topicLed1State = topicRoot + "/led1/state";
     topicLed2State = topicRoot + "/led2/state";
@@ -94,6 +92,13 @@ void MqttManager::rebuildTopics()
     topicAvail = topicRoot + "/availability";
     topicStatus = topicRoot + "/status";
     topicTemp = topicRoot + "/temperature";
+
+    const String matterbridgeDeviceId = "esp-relay-" + mqttClientId;
+    const String matterbridgeRoot = String(MATTERBRIDGE_MQTT_TOPIC) + "/" + matterbridgeDeviceId;
+    topicMatterbridgeConfig = matterbridgeRoot + "/config/root";
+    topicMatterbridgeState = matterbridgeRoot + "/state/root";
+    topicMatterbridgeSubscribe = matterbridgeRoot + "/subscribe/root";
+    topicMatterbridgeWrite = matterbridgeRoot + "/write/root";
 }
 
 void MqttManager::setOperationHandler(OperationHandler handler)
@@ -140,12 +145,8 @@ void MqttManager::publishLedStripState()
         bootAnimation = getLedStripBootAnimation();
     }
 
-    String json = "{";
-    json += String("\"master_brightness\":") + String(masterBrightness) + ",";
-    json += String("\"boot_animation\":") + (bootAnimation ? "true" : "false");
-    json += "}";
-
-    publishElementState("led_strip", json);
+    (void)masterBrightness;
+    (void)bootAnimation;
 }
 
 void MqttManager::setTemperatureTelemetryGetters(BoolGetter probePresentGetter, IntGetter probeRawGetter, IntGetter currentRawGetter, FloatGetter currentTempCGetter)
@@ -187,8 +188,23 @@ const char *MqttManager::stateName(int state)
 
 void MqttManager::setClientId(const String &clientId)
 {
+    if (clientId == mqttClientId)
+    {
+        return;
+    }
+
+    // Matterbridge treats an empty retained config as endpoint removal.  Clear
+    // the old hostname-derived endpoint before publishing the replacement.
+    if (mqtt.connected() && topicMatterbridgeConfig.length() > 0)
+    {
+        mqtt.publish(topicMatterbridgeConfig.c_str(), "", true);
+        mqtt.disconnect();
+    }
+
     mqttClientId = clientId;
     rebuildTopics();
+    legacyHomeTopicsCleared = false;
+    lastMqttRetry = 0;
 }
 
 void MqttManager::setServer(const String &host, int port)
@@ -299,7 +315,6 @@ void MqttManager::setEnabled(bool enabled)
 
     if (!mqttEnabled && mqtt.connected())
     {
-        mqtt.publish(topicAvail.c_str(), "offline", true);
         mqtt.disconnect();
     }
 }
@@ -324,60 +339,114 @@ int MqttManager::state()
     return mqtt.state();
 }
 
-void MqttManager::publishElementState(const String &element, const String &value)
+void MqttManager::publishRelayState(bool relayOn)
 {
-    if (!mqttEnabled || !mqtt.connected())
+    publishMatterbridgeRelay(relayOn);
+    if (mqttEnabled && mqtt.connected())
+    {
+        Serial.print("[MQTT] TX ");
+        Serial.print(topicMatterbridgeState);
+        Serial.print(" => ");
+        Serial.println(relayOn ? "{\"OnOff\":{\"onOff\":true}}" : "{\"OnOff\":{\"onOff\":false}}");
+    }
+}
+
+void MqttManager::publishMatterbridgeMetadata()
+{
+    if (!mqttEnabled || !mqtt.connected() || mqttClientId.length() == 0)
     {
         return;
     }
 
-    const String topic = topicRoot + "/" + element + "/state";
-    mqtt.publish(topic.c_str(), value.c_str(), true);
+    const String name = getDeviceName != nullptr ? getDeviceName() : mqttClientId;
+    const String config = String("{\"deviceTypes\":[\"OnOffPlugInUnit\"],\"clusters\":{\"BridgedDeviceBasicInformation\":{\"nodeLabel\":\"") +
+                          name + "\",\"serialNumber\":\"" + mqttClientId + "\"}}}";
+    mqtt.publish(topicMatterbridgeConfig.c_str(), config.c_str(), true);
+    mqtt.publish(topicMatterbridgeSubscribe.c_str(), "{\"OnOff\":[\"onOff\"]}", true);
 }
 
-void MqttManager::publishRelayState(bool relayOn)
+void MqttManager::clearLegacyHomeRetainedTopics()
 {
-    publishElementState("relay", relayOn ? "on" : "off");
+    if (legacyHomeTopicsCleared)
+    {
+        return;
+    }
+
+    const String legacyTopics[] = {
+        topicRelayState, topicLed1State, topicLed2State, topicDeviceState,
+        topicAvail, topicStatus, topicTemp};
+    for (const String &topic : legacyTopics)
+    {
+        mqtt.publish(topic.c_str(), "", true);
+    }
+
+    legacyHomeTopicsCleared = true;
+    Serial.println("[MQTT] Cleared legacy retained /home topics.");
+}
+
+void MqttManager::publishMatterbridgeRelay(bool relayOn)
+{
+    if (!mqttEnabled || mqttClientId.length() == 0)
+    {
+        return;
+    }
+
+    if (!mqtt.connected())
+    {
+        // Preserve an actual state transition that occurred while MQTT was
+        // unavailable; it is sent once after the next successful reconnect.
+        matterbridgeStateDirty = true;
+        return;
+    }
+
+    const String state = String("{\"OnOff\":{\"onOff\":") + (relayOn ? "true" : "false") + "}}";
+    mqtt.publish(topicMatterbridgeState.c_str(), state.c_str(), true);
+    matterbridgeStateDirty = false;
+}
+
+bool MqttManager::handleMatterbridgeWrite(const String &topic, const String &message)
+{
+    if (topic != topicMatterbridgeWrite)
+    {
+        return false;
+    }
+
+    const int onOffIndex = message.indexOf("\"onOff\"");
+    const int colonIndex = onOffIndex < 0 ? -1 : message.indexOf(':', onOffIndex);
+    if (colonIndex >= 0 && operationHandler != nullptr)
+    {
+        String value = message.substring(colonIndex + 1);
+        value.trim();
+        bool on = false;
+        if (value.startsWith("true"))
+        {
+            on = true;
+            operationHandler("relay", "set", "on");
+        }
+        else if (value.startsWith("false"))
+        {
+            operationHandler("relay", "set", "off");
+        }
+        else if (parseOnOff(value, on))
+        {
+            operationHandler("relay", "set", on ? "on" : "off");
+        }
+    }
+    return true;
 }
 
 void MqttManager::publishLed1State(bool on)
 {
-    publishElementState("led1", on ? "on" : "off");
+    (void)on;
 }
 
 void MqttManager::publishLed2State(bool on)
 {
-    publishElementState("led2", on ? "on" : "off");
+    (void)on;
 }
 
 void MqttManager::publishDeviceState()
 {
-    const String name = getDeviceName != nullptr ? getDeviceName() : String(mqttClientId);
-    publishElementState("device", name);
-}
-
-void MqttManager::publishStatusAndTemperature(bool relayOn)
-{
-    if (!mqttEnabled || !mqtt.connected())
-    {
-        return;
-    }
-
-    const char *relayStatus = relayOn ? "ON" : "OFF";
-    const String statusPayload = String("{\"relay\":\"") + relayStatus + "\",\"uptime\":" + String(millis() / 1000) + "}";
-    mqtt.publish(topicStatus.c_str(), statusPayload.c_str(), true);
-
-    if (getProbePresent != nullptr && getCurrentProbeRaw != nullptr && getCurrentProbeTempC != nullptr)
-    {
-        const bool probePresent = getProbePresent();
-        if (probePresent)
-        {
-            const int raw = getCurrentProbeRaw();
-            const float tempC = getCurrentProbeTempC();
-            const String tempPayload = String("{\"adc_raw\":") + String(raw) + String(",\"temp_c\":") + String(tempC, 2) + "}";
-            mqtt.publish(topicTemp.c_str(), tempPayload.c_str(), true);
-        }
-    }
 }
 
 void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
@@ -390,81 +459,14 @@ void MqttManager::handleMessage(char *topic, byte *payload, unsigned int length)
     }
 
     const String topicStr(topic);
-    const String prefix = topicRoot + "/";
-    if (!topicStr.startsWith(prefix))
+    Serial.print("[MQTT] RX ");
+    Serial.print(topicStr);
+    Serial.print(" => ");
+    Serial.println(message);
+
+    if (handleMatterbridgeWrite(topicStr, message))
     {
         return;
-    }
-
-    const String suffix = topicStr.substring(prefix.length());
-    const int sep = suffix.lastIndexOf('/');
-    if (sep <= 0 || sep >= suffix.length() - 1)
-    {
-        return;
-    }
-
-    String element = suffix.substring(0, sep);
-    String operation = suffix.substring(sep + 1);
-    element.trim();
-    operation.trim();
-    element.toLowerCase();
-    operation.toLowerCase();
-
-    if (operationHandler != nullptr)
-    {
-        operationHandler(element, operation, message);
-    }
-
-    if (operation == "set")
-    {
-        if (element == "led1" && setLed1State != nullptr)
-        {
-            bool on = false;
-            if (parseOnOff(message, on) && setLed1State(on))
-            {
-                publishLed1State(on);
-            }
-            return;
-        }
-
-        if (element == "led2" && setLed2State != nullptr)
-        {
-            bool on = false;
-            if (parseOnOff(message, on) && setLed2State(on))
-            {
-                publishLed2State(on);
-            }
-            return;
-        }
-
-        return;
-    }
-
-    if (operation == "get" || operation == "state")
-    {
-        if (element == "relay" && getRelayState != nullptr)
-        {
-            publishRelayState(getRelayState());
-            return;
-        }
-
-        if (element == "led1" && getLed1State != nullptr)
-        {
-            publishLed1State(getLed1State());
-            return;
-        }
-
-        if (element == "led2" && getLed2State != nullptr)
-        {
-            publishLed2State(getLed2State());
-            return;
-        }
-
-        if (element == "device")
-        {
-            publishDeviceState();
-            return;
-        }
     }
 }
 
@@ -486,39 +488,28 @@ void MqttManager::connectIfNeeded(bool relayOn)
 
     const bool useCredentials = mqttUser.length() > 0;
     const bool connected = useCredentials
-                               ? mqtt.connect(
-                                     mqttClientId.c_str(),
-                                     mqttUser.c_str(),
-                                     mqttPass.c_str(),
-                                     topicAvail.c_str(),
-                                     1,
-                                     true,
-                                     "offline")
-                               : mqtt.connect(
-                                     mqttClientId.c_str(),
-                                     topicAvail.c_str(),
-                                     1,
-                                     true,
-                                     "offline");
+                               ? mqtt.connect(mqttClientId.c_str(), mqttUser.c_str(), mqttPass.c_str())
+                               : mqtt.connect(mqttClientId.c_str());
 
     if (connected)
     {
-        const bool subscribed = mqtt.subscribe(topicOpsWildcard.c_str());
+        const bool matterbridgeSubscribed = mqtt.subscribe(topicMatterbridgeWrite.c_str());
 
-        mqtt.publish(topicAvail.c_str(), "online", true);
-        publishRelayState(relayOn);
-        if (getLed1State != nullptr)
+        clearLegacyHomeRetainedTopics();
+        publishMatterbridgeMetadata();
+        if (matterbridgeStateDirty)
         {
-            publishLed1State(getLed1State());
+            publishMatterbridgeRelay(relayOn);
         }
-        if (getLed2State != nullptr)
-        {
-            publishLed2State(getLed2State());
-        }
-        publishDeviceState();
-        publishStatusAndTemperature(relayOn);
-        lastTelemetryPublish = millis();
         mqtt.loop();
+
+        Serial.println("[MQTT] Subscribed command topic:");
+        Serial.print("  ");
+        Serial.println(topicMatterbridgeWrite);
+        if (!matterbridgeSubscribed)
+        {
+            Serial.println("[MQTT] Warning: one or more subscriptions failed.");
+        }
 
         if (debugLogging)
         {
@@ -528,12 +519,6 @@ void MqttManager::connectIfNeeded(bool relayOn)
             Serial.print(mqttHost);
             Serial.print(":");
             Serial.println(mqttPort);
-            Serial.print("Subscribed: ");
-            Serial.println(topicOpsWildcard);
-            if (!subscribed)
-            {
-                Serial.println("Warning: MQTT subscription failed.");
-            }
             Serial.println("==================================");
         }
         return;
@@ -571,10 +556,4 @@ void MqttManager::maintain(bool wifiConnected, bool relayOn)
         return;
     }
 
-    const unsigned long now = millis();
-    if (now - lastTelemetryPublish >= MQTT_TELEMETRY_INTERVAL_MS)
-    {
-        publishStatusAndTemperature(relayOn);
-        lastTelemetryPublish = now;
-    }
 }

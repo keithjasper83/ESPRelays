@@ -78,11 +78,14 @@ constexpr int MQTT_PORT = 1883;
 constexpr char MQTT_USER[] = MQTT_USER_DEFAULT;
 constexpr char MQTT_PASS[] = MQTT_PASS_DEFAULT;
 
+// Must match the base topic configured in the Matterbridge MQTT plugin.
+constexpr char MATTERBRIDGE_MQTT_TOPIC[] = "matterbridge";
+
 constexpr char TIME_SERVER_DEFAULT[] = "pool.ntp.org";
 constexpr char TIME_SERVER_FALLBACK_1[] = "time.google.com";
 constexpr char TIME_SERVER_FALLBACK_2[] = "time.cloudflare.com";
 constexpr char TIME_TZ_DEFAULT[] = "GMT0BST,M3.5.0/1,M10.5.0/2";
-constexpr uint32_t TIME_SYNC_INTERVAL_MS = 6UL * 60UL * 60UL * 1000UL;
+constexpr uint32_t TIME_SYNC_INTERVAL_MS = 60UL * 60UL * 1000UL;
 constexpr uint32_t TIME_SYNC_RETRY_MS = 60UL * 1000UL;
 
 constexpr uint8_t SCHEDULE_MAX_EVENTS = 10;

@@ -77,6 +77,34 @@ Security should protect users, not trap them.
 - OTA check/update paths for safer firmware rollout.
 - Time sync and schedule execution for repeatable behavior.
 - UDP discovery for quick device visibility on the network.
+- Native Matterbridge MQTT endpoint publishing, so each relay can be exposed as a Matter outlet without a separate adapter.
+
+## Matterbridge MQTT
+
+Install and enable the `matterbridge-mqtt` plugin, point it at the same MQTT
+broker as the relay, and set its base topic to `matterbridge` (or change
+`MATTERBRIDGE_MQTT_TOPIC` in `AppConfig.h` to match your configured base).
+
+Once the relay connects, it automatically publishes retained Matterbridge
+metadata and state at:
+
+```text
+matterbridge/esp-relay-<hostname>/config/root
+matterbridge/esp-relay-<hostname>/state/root
+matterbridge/esp-relay-<hostname>/subscribe/root
+```
+
+Matterbridge controls it through `matterbridge/esp-relay-<hostname>/write/root`.
+The device is exposed as an `OnOffPlugInUnit`; commands are applied through the
+existing relay controller and its actual state is reported back to Matter.
+The configured hostname is the unique fleet identifier and Matter-visible name:
+for example, hostname `garage-pump` becomes Matterbridge device
+`esp-relay-garage-pump`. Give every deployed relay a unique hostname before
+pairing it with your Matter controller.
+
+Firmware upgraded from the previous MQTT layout clears its retained
+`home/<hostname>/...` records once, then uses only the `matterbridge/...` topic
+tree.
 
 ## Ideal Use Cases
 

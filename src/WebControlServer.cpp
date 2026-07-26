@@ -1123,7 +1123,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       </div>
 
       <div class="kv" style="margin-top:10px"><strong>Time Valid:</strong> <span id="timeValid">n/a</span></div>
-      <div class="kv"><strong>System Time:</strong> <span id="systemTime">n/a</span></div>
+      <div class="kv"><strong>Current Synchronized Time:</strong> <span id="systemTime">n/a</span></div>
       <div class="kv"><strong>System Epoch:</strong> <span id="systemEpoch">n/a</span></div>
       <div class="kv"><strong>Last Sync Status:</strong> <span id="timeSyncStatus">n/a</span></div>
       <div class="kv"><strong>Last Sync Epoch:</strong> <span id="timeSyncEpoch">n/a</span></div>
@@ -1874,6 +1874,14 @@ function runLedBootAnimation() {
       }
     }
 
+    async function pollCurrentTime() {
+      try {
+        showTimeStatus(await parseResponse(await fetch('/time', { cache: 'no-store' })));
+      } catch {
+        // Keep the last known clock visible while Wi-Fi or the device is reconnecting.
+      }
+    }
+
     async function saveTemperatureMonitoring() {
       setBusy(true);
       try {
@@ -2223,6 +2231,7 @@ function runLedBootAnimation() {
     resetScheduleForm();
     refreshStatus();
     setInterval(pollLiveTemperature, 1000);
+    setInterval(pollCurrentTime, 5000);
   </script>
 </body>
 </html>

@@ -176,6 +176,7 @@ void RelayController::maintain(unsigned long nowMs)
 
     if (expired)
     {
+        Serial.println("[RELAY] Auto-off timer expired; publishing OFF state through the state-change callback.");
         set(false);
     }
 }
