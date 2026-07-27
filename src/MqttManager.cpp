@@ -339,6 +339,11 @@ int MqttManager::state()
     return mqtt.state();
 }
 
+PubSubClient& MqttManager::client()
+{
+    return mqtt;
+}
+
 void MqttManager::publishRelayState(bool relayOn)
 {
     publishMatterbridgeRelay(relayOn);

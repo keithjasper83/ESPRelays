@@ -16,11 +16,11 @@
 #include "ButtonManager.h"
 #include "CommandRouter.h"
 #include "DeviceCommands.h"
-#include "IndicatorLeds.h"
 #include "MqttManager.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
 #include "ScheduleManager.h"
+#include "Telemetry.h"
 #include "TimeSyncManager.h"
 #include "TemperatureProbeManager.h"
 #include "WebControlServer.h"
@@ -30,7 +30,6 @@
 bool debugLogging = false;
 
 RelayController relayController;
-IndicatorLeds indicatorLeds;
 WiFiManager wifiManager;
 MqttManager mqttManager;
 ButtonManager buttonManager;
@@ -42,6 +41,7 @@ TimeSyncManager timeSyncManager;
 ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
 TemperatureProbeManager temperatureProbeManager;
+Telemetry telemetry;
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastTimestampLog = 0;
@@ -232,6 +232,8 @@ void onRelayStateChanged(bool state)
 {
     mqttManager.publishRelayState(state);
     udpDiscovery.advertiseNow();
+    telemetry.setRelayState("relay0", state, "button");
+    telemetry.setControlState(CONTROL_STATE_ON, CONTROL_STATE_OFF, "manual", "button");
 }
 
 void disableBluetooth()
@@ -649,55 +651,32 @@ void handleMqttOperation(const String &element, const String &operation, const S
 
     if (element == "led_strip")
     {
-        if (operation == "set" && element == "master_brightness")
-        {
-            uint8_t brightness = 0;
-            if (parseUint8(payload, brightness))
-            {
-                indicatorLeds.setMasterBrightness(brightness);
-            }
-            return;
-        }
-
-        if (operation == "get" || operation == "state")
-        {
-            mqttManager.publishLedStripState();
-            return;
-        }
-
-        if (operation == "toggle" && element == "boot_animation")
-        {
-            if (indicatorLeds.isBootAnimationActive())
-            {
-                indicatorLeds.bootAnimationComplete();
-            }
-            else
-            {
-                indicatorLeds.startBootAnimation(millis());
-            }
-            return;
-        }
+        // IndicatorLeds component removed - led_strip operations no longer supported
+        return;
     }
 }
 
+// IndicatorLeds component removed - LED control functions no longer supported
 bool mqttSetLed1(bool on)
 {
-    return indicatorLeds.setRelayLed(on);
+    (void)on;
+    return false;
 }
 
 bool mqttGetLed1()
 {
-    return indicatorLeds.relayLedState();
+    return false;
 }
 
 bool mqttSetLed2(bool on)
 {
-    return indicatorLeds.setWifiLed(on);
+    (void)on;
+    return false;
 }
 
 bool mqttGetLed2()
 {
-    return indicatorLeds.wifiLedState();
+    return false;
 }
 
 bool mqttGetRelay()
@@ -710,74 +689,63 @@ String mqttGetDeviceName()
     return deviceHostname;
 }
 
+// IndicatorLeds component removed - LED strip functions no longer supported
 uint8_t mqttGetLedStripMasterBrightness()
 {
-    return indicatorLeds.getMasterBrightness();
+    return 0;
 }
 
 void mqttSetLedStripMasterBrightness(uint8_t brightness)
 {
-    indicatorLeds.setMasterBrightness(brightness);
+    (void)brightness;
 }
 
 bool mqttGetLedStripBootAnimation()
 {
-    return indicatorLeds.isBootAnimationActive();
+    return false;
 }
 
 bool mqttSetLedStripBootAnimation(bool active)
 {
-    unsigned long now = millis();
-    if (active)
-    {
-        return indicatorLeds.startBootAnimation(now);
-    }
-    else
-    {
-        indicatorLeds.bootAnimationComplete();
-        return true;
-    }
+    (void)active;
+    return false;
 }
 
 bool startRelayLedTest()
 {
-    return indicatorLeds.startRelayLedTest(millis(), LED_TEST_DURATION_MS);
+    return false;
 }
 
 bool startWifiLedTest()
 {
-    return indicatorLeds.startWifiLedTest(millis(), LED_TEST_DURATION_MS);
+    return false;
 }
 
 bool startAllLedTests()
 {
-    return indicatorLeds.startAllLedTests(millis(), LED_TEST_DURATION_MS);
+    return false;
 }
 
 bool getRelayLedTestActive()
 {
-    return indicatorLeds.relayLedTestActive();
+    return false;
 }
 
 bool getWifiLedTestActive()
 {
-    return indicatorLeds.wifiLedTestActive();
+    return false;
 }
 
 bool getLedActiveHigh()
 {
-    return indicatorLeds.isActiveHigh();
+    return false;
 }
 
 bool setLedActiveHigh(bool activeHigh, String &error)
 {
-    if (!indicatorLeds.setActiveHigh(activeHigh))
-    {
-        error = "Failed to persist LED polarity";
-        return false;
-    }
-
-    return true;
+    (void)activeHigh;
+    (void)error;
+    return false;
 }
 
 void handleSerial()
@@ -1131,6 +1099,23 @@ void setup()
     relayController.begin();
     relayController.setStateChangedCallback(onRelayStateChanged);
 
+    TelemetryDevice deviceInfo = {
+        .id = DEVICE_HOSTNAME_DEFAULT,
+        .name = DEVICE_NAME_DEFAULT,
+        .location = "",
+        .function = DEVICE_TYPE_DEFAULT,
+        .project = "ESPRelays",
+        .firmwareVersion = FIRMWARE_VERSION,
+        .type = DEVICE_TYPE_DEFAULT,
+        .fwVersion = FIRMWARE_VERSION,
+        .hwVersion = FIRMWARE_VERSION
+    };
+
+    telemetry.begin(deviceInfo);
+    telemetry.setMqttClient(mqttManager.client());
+    telemetry.addRelay(0);
+    telemetry.addTemperatureProbe(0);
+
     commandContext.relay = &relayController;
     commandContext.wifi = &wifiManager;
     commandContext.ota = &otaUpdateManager;
@@ -1145,7 +1130,6 @@ void setup()
     webContext.relay = &relayController;
     webContext.wifi = &wifiManager;
     webContext.mqtt = &mqttManager;
-    webContext.indicatorLeds = &indicatorLeds;
     webContext.timeSync = &timeSyncManager;
     webContext.schedule = &scheduleManager;
     webContext.ota = &otaUpdateManager;
@@ -1199,9 +1183,6 @@ void setup()
     mqttManager.setOperationHandler(handleMqttOperation);
     mqttManager.setElementHandlers(mqttGetRelay, mqttSetLed1, mqttGetLed1, mqttSetLed2, mqttGetLed2, mqttGetDeviceName);
     mqttManager.setTemperatureTelemetryGetters(getTemperatureProbePresent, getTemperatureProbeRaw, getCurrentTemperatureRaw, getCurrentTemperatureC);
-    mqttManager.setLedStripHandlers(mqttGetLedStripMasterBrightness, mqttSetLedStripMasterBrightness, mqttGetLedStripBootAnimation, mqttSetLedStripBootAnimation);
-
-    temperatureProbeManager.begin();
 
     timeSyncManager.begin();
     scheduleManager.begin();
@@ -1244,6 +1225,7 @@ void loop()
     mqttManager.maintain(wifiManager.isConnected(), relayController.isOn());
     temperatureProbeManager.maintain(millis());
     udpDiscovery.loop(wifiManager.isConnected());
+    telemetry.loop();
 
     if (wifiManager.isConnected() && !lastDiscoveryWifiConnected)
     {
@@ -1251,17 +1233,4 @@ void loop()
     }
 
     lastDiscoveryWifiConnected = wifiManager.isConnected();
-
-    if (!indicatorLedsStarted && wifiManager.isConnected())
-    {
-        indicatorLeds.begin();
-        indicatorLedsStarted = true;
-    }
-
-    if (indicatorLedsStarted)
-    {
-        indicatorLeds.update(millis(), relayController.isOn(), wifiManager.isConnected());
-    }
-    printTimestampLine();
-    heartbeat();
 }

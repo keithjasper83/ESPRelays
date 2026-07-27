@@ -52,6 +52,7 @@ public:
     bool nvsReady() const;
     bool isConnected();
     int state();
+    PubSubClient& client();
     void handleMessage(char *topic, byte *payload, unsigned int length);
 
     static const char *stateName(int state);

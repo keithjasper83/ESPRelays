@@ -11,6 +11,8 @@
 
 #include "AppConfig.h"
 
+class Telemetry;
+
 class TemperatureProbeManager
 {
 public:

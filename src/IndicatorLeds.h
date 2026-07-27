@@ -8,6 +8,8 @@
 
 #include <Arduino.h>
 
+class Telemetry;
+
 class IndicatorLeds
 {
 public:
@@ -64,6 +66,8 @@ private:
     void writeRelayLed(bool on);
     void writeWifiLed(bool on);
     void applyStripBrightness();
+
+    Telemetry* telemetry = nullptr;
 
     struct LedColor
     {

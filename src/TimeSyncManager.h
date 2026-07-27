@@ -10,6 +10,8 @@
 
 #include "AppConfig.h"
 
+class Telemetry;
+
 class TimeSyncManager
 {
 public:
