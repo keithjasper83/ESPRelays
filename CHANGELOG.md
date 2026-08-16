@@ -1,5 +1,15 @@
 # Changelog
 
+## v4.0.0 - 2026-08-16
+
+- Update artifact upload paths in CI workflow (c5ea68c)
+- ci: set artifact retention to 10 days (20870f2)
+- feat: add Unified Server control and durable calibration (bc11aa3)
+- Add telemetry subsystem with configuration, data management, and diagnostics (de6266e)
+- feat: Add Matterbridge MQTT integration and simplify MQTT topic structure (672ded7)
+- feat: Add factory reset functionality and temperature monitoring settings (fcd747b)
+- Add WS2812 LED strip control and status (1aebae5)
+
 ## v2.1.3 - 2026-07-11
 
 - Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (7b4dbf6)
