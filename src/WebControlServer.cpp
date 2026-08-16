@@ -112,6 +112,8 @@ namespace
     json += jsonEscape(FIRMWARE_NAME);
     json += "\",\"version\":\"";
     json += jsonEscape(FIRMWARE_VERSION);
+    json += "\",\"release_date\":\"";
+    json += jsonEscape(FIRMWARE_RELEASE_DATE);
     json += "\"},";
     json += "\"hostname_default\":\"";
     json += jsonEscape(DEVICE_HOSTNAME_DEFAULT);
@@ -486,17 +488,17 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
   <style>
     :root {
       color-scheme: dark;
-      --bg-0: #020617;
-      --bg-1: #0f172a;
-      --bg-2: #111827;
-      --card: rgba(15, 23, 42, 0.88);
-      --card-border: rgba(148, 163, 184, 0.18);
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --line: rgba(148, 163, 184, 0.12);
-      --accent: #22d3ee;
-      --accent-2: #38bdf8;
-      --shadow: 0 18px 40px rgba(2, 6, 23, 0.55);
+      --bg-0: #0b1725;
+      --bg-1: #0b1725;
+      --bg-2: #172a3e;
+      --card: #132335;
+      --card-border: #31465c;
+      --text: #f2f5f8;
+      --muted: #aebccc;
+      --line: #31465c;
+      --accent: #59ddd8;
+      --accent-2: #ffc229;
+      --shadow: 0 14px 32px rgba(2, 8, 15, 0.28);
     }
     html, body {
       width: 100%;
@@ -505,10 +507,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
     body {
       margin: 0;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at 15% 15%, rgba(34, 211, 238, 0.10), transparent 30%),
-        radial-gradient(circle at 85% 15%, rgba(56, 189, 248, 0.10), transparent 28%),
-        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+      background: var(--bg-0);
       color: var(--text);
       min-height: 100vh;
       overflow-x: hidden;
@@ -526,13 +525,12 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
     .card {
       background: var(--card);
       border: 1px solid var(--card-border);
-      border-radius: 16px;
+      border-radius: 9px;
       padding: 18px;
       margin-bottom: 16px;
       box-shadow: var(--shadow);
       width: 100%;
       box-sizing: border-box;
-      backdrop-filter: blur(14px);
     }
     h1 {
       margin: 0 0 8px;
@@ -597,11 +595,11 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
     }
     button:active { transform: scale(0.985); }
     button:disabled { opacity: 0.55; cursor: not-allowed; }
-    .on { background: linear-gradient(135deg, #115e59, #0f766e); box-shadow: 0 10px 24px rgba(15, 118, 110, 0.24); }
-    .off { background: linear-gradient(135deg, #7f1d1d, #b91c1c); box-shadow: 0 10px 24px rgba(185, 28, 28, 0.24); }
-    .toggle { background: linear-gradient(135deg, #7c2d12, #c2410c); box-shadow: 0 10px 24px rgba(194, 65, 12, 0.24); }
-    .refresh { background: linear-gradient(135deg, #1e40af, #2563eb); box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24); }
-    .save { background: linear-gradient(135deg, #6d28d9, #7c3aed); color: #f8fafc; box-shadow: 0 10px 24px rgba(124, 58, 237, 0.24); }
+    .on { background: #17867f; box-shadow: 0 10px 24px rgba(23, 134, 127, 0.24); }
+    .off { background: #8f3438; box-shadow: 0 10px 24px rgba(143, 52, 56, 0.24); }
+    .toggle { background: #a66c09; box-shadow: 0 10px 24px rgba(166, 108, 9, 0.24); }
+    .refresh { background: #245d85; box-shadow: 0 10px 24px rgba(36, 93, 133, 0.24); }
+    .save { background: #17867f; color: #f8fafc; box-shadow: 0 10px 24px rgba(23, 134, 127, 0.24); }
     .is-active {
       position: relative;
       box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 0 0 6px rgba(34, 211, 238, 0.10), 0 14px 30px rgba(2, 6, 23, 0.35);
@@ -1496,7 +1494,7 @@ function runLedBootAnimation() {
       }
       if (obj.device_name) ids.deviceName.textContent = obj.device_name;
       if (obj.device_type) ids.deviceType.textContent = obj.device_type;
-      if (obj.firmware) ids.firmware.textContent = obj.firmware.name + ' ' + obj.firmware.version;
+      if (obj.firmware) ids.firmware.textContent = obj.firmware.name + ' ' + obj.firmware.version + (obj.firmware.release_date ? ` · ${obj.firmware.release_date}` : '');
       if (obj.mdns_host) ids.mdnsHost.textContent = obj.mdns_host;
       if (obj.mdns_host) ids.mdnsHostInline.textContent = obj.mdns_host;
       if (obj.mqtt_host) ids.mqttHost.textContent = obj.mqtt_host;
@@ -2350,8 +2348,32 @@ void WebControlServer::registerRoutes()
               { handleWifiScan(); });
   gServer.on("/hostname", HTTP_POST, [this]()
               { handleSetHostname(); });
+  gServer.on("/unified/hello", HTTP_GET, [this]()
+              { handleUnifiedHello(); });
   gServer.onNotFound([this]()
                       { handleNotFound(); });
+}
+
+void WebControlServer::handleUnifiedHello()
+{
+  if (context.setUnifiedServer == nullptr)
+  {
+    sendError(503, "Unified Server client is unavailable");
+    return;
+  }
+  const String serverUrl = gServer.arg("server");
+  if (serverUrl.length() == 0)
+  {
+    sendError(400, "Missing server URL");
+    return;
+  }
+  String error;
+  if (!context.setUnifiedServer(serverUrl, error))
+  {
+    sendError(400, error.c_str());
+    return;
+  }
+  gServer.send(200, "application/json", "{\"ok\":true,\"registration\":\"scheduled\"}");
 }
 
 bool WebControlServer::dispatchCommand(const char *command) const

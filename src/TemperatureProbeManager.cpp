@@ -9,6 +9,8 @@
 #include <math.h>
 #include <Preferences.h>
 
+#include "TemperatureCalibrationRecord.h"
+
 namespace
 {
     constexpr char TEMP_PREF_NAMESPACE[] = "temp_probe";
@@ -20,10 +22,25 @@ namespace
     constexpr char TEMP_PREF_HIGH_TEMP[] = "high_temp";
     constexpr char TEMP_PREF_TRIM_OFFSET[] = "trim_ofs";
     constexpr char TEMP_PREF_ENABLED[] = "enabled";
+    constexpr char TEMP_PREF_RECORD_V2[] = "cal_v2";
+    constexpr char TEMP_PREF_RECORD_A[] = "cal_a";
+    constexpr char TEMP_PREF_RECORD_B[] = "cal_b";
 
     bool isProbeInValidRange(int rawValue)
     {
         return rawValue > TEMP_PROBE_PRESENT_MIN_RAW && rawValue < TEMP_PROBE_PRESENT_MAX_RAW;
+    }
+
+    bool readRecord(Preferences &preferences, const char *key, TemperatureCalibrationRecord &record)
+    {
+        return preferences.getBytesLength(key) == sizeof(record) &&
+               preferences.getBytes(key, &record, sizeof(record)) == sizeof(record) &&
+               temperatureCalibrationRecordValid(record);
+    }
+
+    bool generationNewer(uint8_t candidate, uint8_t current)
+    {
+        return candidate != current && static_cast<uint8_t>(candidate - current) < 128U;
     }
 }
 
@@ -41,6 +58,34 @@ void TemperatureProbeManager::loadCalibration()
         return;
     }
 
+    TemperatureCalibrationRecord recordA;
+    TemperatureCalibrationRecord recordB;
+    TemperatureCalibrationRecord legacyRecord;
+    const bool recordAValid = readRecord(preferences, TEMP_PREF_RECORD_A, recordA);
+    const bool recordBValid = readRecord(preferences, TEMP_PREF_RECORD_B, recordB);
+    const bool legacyRecordValid = readRecord(preferences, TEMP_PREF_RECORD_V2, legacyRecord);
+    const TemperatureCalibrationRecord *selected = nullptr;
+    if (recordAValid) selected = &recordA;
+    if (recordBValid && (!selected || generationNewer(recordB.reserved, selected->reserved))) selected = &recordB;
+    if (!selected && legacyRecordValid) selected = &legacyRecord;
+    if (selected != nullptr)
+    {
+        const TemperatureCalibrationRecord &record = *selected;
+        lowPoint.valid = (record.flags & TEMPERATURE_CALIBRATION_LOW_VALID) != 0;
+        lowPoint.raw = record.lowRaw;
+        lowPoint.tempC = lowPoint.valid ? record.lowTempC : NAN;
+        highPoint.valid = (record.flags & TEMPERATURE_CALIBRATION_HIGH_VALID) != 0;
+        highPoint.raw = record.highRaw;
+        highPoint.tempC = highPoint.valid ? record.highTempC : NAN;
+        trimOffset = record.trimOffsetC;
+        enabled = (record.flags & TEMPERATURE_MONITORING_ENABLED) != 0;
+        calibrationGeneration = record.reserved;
+        preferences.end();
+        calibrationLoaded = true;
+        if (!recordAValid && !recordBValid) persistCalibration();
+        return;
+    }
+
     lowPoint.valid = preferences.getBool(TEMP_PREF_LOW_VALID, false);
     lowPoint.raw = preferences.getInt(TEMP_PREF_LOW_RAW, -1);
     lowPoint.tempC = preferences.getFloat(TEMP_PREF_LOW_TEMP, NAN);
@@ -53,6 +98,9 @@ void TemperatureProbeManager::loadCalibration()
 
     preferences.end();
     calibrationLoaded = true;
+    // Migrate legacy keys without changing their values. The legacy mirror is
+    // retained on future writes so downgrades remain safe.
+    persistCalibration();
 }
 
 bool TemperatureProbeManager::persistCalibration()
@@ -72,8 +120,28 @@ bool TemperatureProbeManager::persistCalibration()
     preferences.putFloat(TEMP_PREF_HIGH_TEMP, highPoint.tempC);
     preferences.putFloat(TEMP_PREF_TRIM_OFFSET, trimOffset);
     preferences.putBool(TEMP_PREF_ENABLED, enabled);
+    TemperatureCalibrationRecord existingA;
+    TemperatureCalibrationRecord existingB;
+    const bool aValid = readRecord(preferences, TEMP_PREF_RECORD_A, existingA);
+    const bool bValid = readRecord(preferences, TEMP_PREF_RECORD_B, existingB);
+    if (aValid && generationNewer(existingA.reserved, calibrationGeneration)) calibrationGeneration = existingA.reserved;
+    if (bValid && generationNewer(existingB.reserved, calibrationGeneration)) calibrationGeneration = existingB.reserved;
+    calibrationGeneration = static_cast<uint8_t>(calibrationGeneration + 1U);
+    const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
+        lowPoint.valid, lowPoint.raw, lowPoint.tempC,
+        highPoint.valid, highPoint.raw, highPoint.tempC,
+        trimOffset, enabled, calibrationGeneration);
+    const char *target = (!aValid || (bValid && generationNewer(existingB.reserved, existingA.reserved)))
+                             ? TEMP_PREF_RECORD_A : TEMP_PREF_RECORD_B;
+    const bool recordSaved = preferences.putBytes(target, &record, sizeof(record)) == sizeof(record);
+    if (recordSaved)
+    {
+        // Retain a single-slot v2 mirror for downgrade compatibility. Recovery
+        // always prefers the independently checksummed A/B records.
+        preferences.putBytes(TEMP_PREF_RECORD_V2, &record, sizeof(record));
+    }
     preferences.end();
-    return true;
+    return recordSaved;
 }
 
 bool TemperatureProbeManager::hasValidReadingForCapture(String &error) const
@@ -325,6 +393,58 @@ bool TemperatureProbeManager::setTrimOffsetC(float offsetC, String &error)
         return false;
     }
 
+    return true;
+}
+
+bool TemperatureProbeManager::restoreCalibration(
+    const bool lowValid, const int lowRaw, const float lowTempC,
+    const bool highValid, const int highRaw, const float highTempC,
+    const float newTrimOffsetC, const bool monitoringEnabled, String &error)
+{
+    loadCalibration();
+    if (!lowValid || !highValid)
+    {
+        error = "A restore requires both calibration references";
+        return false;
+    }
+    if (lowRaw < 0 || lowRaw > 4095 || highRaw < 0 || highRaw > 4095 || lowRaw == highRaw)
+    {
+        error = "Calibration raw references must be distinct ADC values from 0 to 4095";
+        return false;
+    }
+    if (!isfinite(lowTempC) || !isfinite(highTempC) || lowTempC < -100.0f || lowTempC > 200.0f ||
+        highTempC < -100.0f || highTempC > 200.0f)
+    {
+        error = "Calibration temperatures must be between -100 and 200 C";
+        return false;
+    }
+    if (!isfinite(newTrimOffsetC) || newTrimOffsetC < -20.0f || newTrimOffsetC > 20.0f)
+    {
+        error = "Trim offset must be between -20 and 20 C";
+        return false;
+    }
+
+    const CalibrationPoint previousLow = lowPoint;
+    const CalibrationPoint previousHigh = highPoint;
+    const float previousTrim = trimOffset;
+    const bool previousEnabled = enabled;
+    lowPoint.valid = true;
+    lowPoint.raw = lowRaw;
+    lowPoint.tempC = lowTempC;
+    highPoint.valid = true;
+    highPoint.raw = highRaw;
+    highPoint.tempC = highTempC;
+    trimOffset = newTrimOffsetC;
+    enabled = monitoringEnabled;
+    if (!persistCalibration())
+    {
+        lowPoint = previousLow;
+        highPoint = previousHigh;
+        trimOffset = previousTrim;
+        enabled = previousEnabled;
+        error = "Failed to persist restored calibration";
+        return false;
+    }
     return true;
 }
 

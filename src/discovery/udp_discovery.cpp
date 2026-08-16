@@ -8,6 +8,7 @@
 
 #include <WiFi.h>
 #include <WiFiUdp.h>
+#include <ArduinoJson.h>
 
 namespace
 {
@@ -65,6 +66,8 @@ void UdpDiscovery::loop(bool wifiConnected)
         return;
     }
 
+    receivePackets();
+
     const unsigned long now = millis();
     const bool intervalDue = (now - lastAdvertiseMs) >= config.advertiseIntervalMs;
 
@@ -78,6 +81,28 @@ void UdpDiscovery::loop(bool wifiConnected)
     {
         pendingAdvertise = false;
         lastAdvertiseMs = now;
+    }
+}
+
+void UdpDiscovery::receivePackets()
+{
+    int packetLength = gDiscoveryUdp.parsePacket();
+    while (packetLength > 0)
+    {
+        JsonDocument document;
+        const DeserializationError error = deserializeJson(document, gDiscoveryUdp);
+        if (!error && String(document["protocol"] | "") == "kj-esp-unified" &&
+            String(document["type"] | "") == "server_hello" &&
+            config.unifiedServerDiscovered != nullptr)
+        {
+            const String serverUrl = document["server_url"] | "";
+            const String websocketUrl = document["websocket_url"] | "";
+            if (serverUrl.length() > 0 && websocketUrl.length() > 0)
+            {
+                config.unifiedServerDiscovered(serverUrl, websocketUrl);
+            }
+        }
+        packetLength = gDiscoveryUdp.parsePacket();
     }
 }
 

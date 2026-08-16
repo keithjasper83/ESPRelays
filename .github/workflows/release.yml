@@ -42,24 +42,6 @@ jobs:
       - name: Install PlatformIO
         run: pip install --upgrade platformio gcovr
 
-      - name: Build firmware
-        run: pio run
-
-      - name: Run host tests
-        run: pio test -vvv -e native
-
-      - name: Enforce coverage gate
-        run: |
-          gcovr \
-            --root . \
-            --object-directory .pio/build/native \
-            --filter src/CommandRouter.cpp \
-            --filter src/DeviceCommands.cpp \
-            --xml-pretty \
-            --output coverage.xml \
-            --html-details coverage.html \
-            --fail-under-line 90
-
       - name: Bump firmware version and update changelog
         id: versioning
         shell: bash
@@ -106,6 +88,16 @@ jobs:
               text,
               count=1,
           )
+          today = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
+          updated, release_date_replacements = re.subn(
+              r'(FIRMWARE_RELEASE_DATE\[]\s*=\s*")[^"]+(";)',
+              rf'\g<1>{today}\2',
+              updated,
+              count=1,
+          )
+          if release_date_replacements != 1:
+              print('Failed to update FIRMWARE_RELEASE_DATE in AppConfig.h', file=sys.stderr)
+              sys.exit(1)
           app_config.write_text(updated, encoding='utf-8')
 
           def run_git(args):
@@ -127,7 +119,6 @@ jobs:
           override = os.environ.get('NOTES_OVERRIDE', '').strip()
           notes = override if override else auto_notes
 
-          today = datetime.datetime.utcnow().strftime('%Y-%m-%d')
           section = f"## {new_tag} - {today}\n\n{notes}\n\n"
 
           if changelog.exists():
@@ -171,8 +162,28 @@ jobs:
             git commit -m "chore(release): ${NEW_TAG}"
           fi
 
-      - name: Rebuild firmware with bumped version
+      - name: Build firmware with release identity
         run: pio run
+
+      - name: Run host tests
+        run: pio test -vvv -e native
+
+      - name: Enforce coverage gate
+        run: |
+          gcovr \
+            --root . \
+            --object-directory .pio/build/native \
+            --filter src/CommandRouter.cpp \
+            --filter src/DeviceCommands.cpp \
+            --xml-pretty \
+            --output coverage.xml \
+            --html-details coverage.html \
+            --fail-under-line 90
+
+      - name: Verify release identity
+        run: |
+          grep -Eq 'FIRMWARE_VERSION\[] = "[0-9]+\.[0-9]+\.[0-9]+"' src/AppConfig.h
+          ! grep -q 'FIRMWARE_RELEASE_DATE\[] = "unreleased"' src/AppConfig.h
 
       - name: Package release assets
         id: package
@@ -184,6 +195,16 @@ jobs:
           cp .pio/build/esp32-c3-devkitm-1/firmware.bin dist/firmware-esp32-c3-devkitm-1.bin
           cp .pio/build/esp32-c3-devkitm-1/firmware.bin dist/firmware-esp32-c3-devkitm-1-${NEW_TAG}.bin
           sha256sum dist/firmware-esp32-c3-devkitm-1.bin > dist/firmware-esp32-c3-devkitm-1.bin.sha256
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+          firmware = pathlib.Path('dist/firmware-esp32-c3-devkitm-1.bin')
+          pathlib.Path('dist/release-manifest.json').write_text(json.dumps({
+              'version': os.environ['NEW_TAG'].removeprefix('v'),
+              'release_date': __import__('datetime').datetime.now(__import__('datetime').timezone.utc).strftime('%Y-%m-%d'),
+              'ota_asset': firmware.name,
+              'sha256': hashlib.sha256(firmware.read_bytes()).hexdigest(),
+          }, indent=2) + '\n')
+          PY
 
       - name: Push commit and tag
         shell: bash
@@ -204,3 +225,4 @@ jobs:
             dist/firmware-esp32-c3-devkitm-1.bin
             dist/firmware-esp32-c3-devkitm-1-${{ steps.versioning.outputs.new_tag }}.bin
             dist/firmware-esp32-c3-devkitm-1.bin.sha256
+            dist/release-manifest.json

@@ -65,6 +65,7 @@ void test_required_post_routes_exist()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature/capture-high\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/temperature/calibration/reset\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/hostname\", HTTP_POST"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/unified/hello\", HTTP_GET"));
 }
 
 void test_config_handler_reads_form_fields()
@@ -111,6 +112,17 @@ void test_json_status_endpoints_exist()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/time\", HTTP_GET"));
 }
 
+void test_unified_configuration_and_restart_contract_exists()
+{
+    const std::string mainSource = readWorkspaceFile("src/main.cpp");
+    const std::string client = readWorkspaceFile("src/UnifiedServerClient.cpp");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("relay_auto_off_minutes"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("temperature_trim_offset_c"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("scheduleUnifiedRestart"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, client.find("settings_set"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, client.find("restart_result"));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -121,5 +133,6 @@ int main(int argc, char **argv)
     RUN_TEST(test_config_handler_reads_form_fields);
     RUN_TEST(test_time_and_schedule_handlers_read_form_fields_and_validate);
     RUN_TEST(test_json_status_endpoints_exist);
+    RUN_TEST(test_unified_configuration_and_restart_contract_exists);
     return UNITY_END();
 }

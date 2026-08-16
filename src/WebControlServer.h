@@ -38,6 +38,7 @@ using LedTestAction = bool (*)();
 using LedTestStatusGetter = bool (*)();
 using LedPolarityGetter = bool (*)();
 using LedPolaritySetter = bool (*)(bool activeHigh, String &error);
+using UnifiedServerSetter = bool (*)(const String &serverUrl, String &error);
 
 struct WebControlContext
 {
@@ -83,6 +84,7 @@ struct WebControlContext
     LedTestStatusGetter getWifiLedTestActive = nullptr;
     LedPolarityGetter getLedActiveHigh = nullptr;
     LedPolaritySetter setLedActiveHigh = nullptr;
+    UnifiedServerSetter setUnifiedServer = nullptr;
     IndicatorLeds *indicatorLeds = nullptr;
 };
 
@@ -130,6 +132,7 @@ private:
     void handleLedStatusGet();
     void handleLedBootAnimation();
     void handleSetHostname();
+    void handleUnifiedHello();
     void handleNotFound();
 
     void sendError(int statusCode, const char *error);

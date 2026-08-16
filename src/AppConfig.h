@@ -62,7 +62,9 @@ constexpr char DEVICE_HOSTNAME_DEFAULT[] = "homerelay";
 constexpr char DEVICE_NAME_DEFAULT[] = "Home Relay";
 constexpr char DEVICE_TYPE_DEFAULT[] = "relay";
 constexpr char FIRMWARE_NAME[] = "esp-relay-controller";
-constexpr char FIRMWARE_VERSION[] = "2.1.3";
+constexpr char FIRMWARE_VERSION[] = "3.1.0";
+// The release workflow replaces "unreleased" before compiling release assets.
+constexpr char FIRMWARE_RELEASE_DATE[] = "unreleased";
 constexpr uint32_t WIFI_CREDENTIALS_PROFILE_VERSION = 2;
 
 constexpr char MQTT_HOST[] = "192.168.0.50";
