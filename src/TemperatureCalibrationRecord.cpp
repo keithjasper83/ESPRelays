@@ -19,6 +19,18 @@ uint32_t temperatureCalibrationCrc32(const TemperatureCalibrationRecord &record)
     return ~crc;
 }
 
+bool temperatureCalibrationPairValid(
+    const int32_t lowRaw, const float lowTempC,
+    const int32_t highRaw, const float highTempC)
+{
+    return lowRaw >= 0 && lowRaw <= 4095 &&
+           highRaw >= 0 && highRaw <= 4095 &&
+           lowRaw != highRaw &&
+           isfinite(lowTempC) && isfinite(highTempC) &&
+           lowTempC >= -100.0f && highTempC <= 200.0f &&
+           lowTempC < highTempC;
+}
+
 bool temperatureCalibrationRecordValid(const TemperatureCalibrationRecord &record)
 {
     if (record.magic != TEMPERATURE_CALIBRATION_MAGIC ||
@@ -31,15 +43,18 @@ bool temperatureCalibrationRecordValid(const TemperatureCalibrationRecord &recor
 
     const bool lowValid = (record.flags & TEMPERATURE_CALIBRATION_LOW_VALID) != 0;
     const bool highValid = (record.flags & TEMPERATURE_CALIBRATION_HIGH_VALID) != 0;
-    if (lowValid && (record.lowRaw < 0 || isnan(record.lowTempC)))
+    if (lowValid && (record.lowRaw < 0 || record.lowRaw > 4095 ||
+                     !isfinite(record.lowTempC) || record.lowTempC < -100.0f || record.lowTempC > 200.0f))
     {
         return false;
     }
-    if (highValid && (record.highRaw < 0 || isnan(record.highTempC)))
+    if (highValid && (record.highRaw < 0 || record.highRaw > 4095 ||
+                      !isfinite(record.highTempC) || record.highTempC < -100.0f || record.highTempC > 200.0f))
     {
         return false;
     }
-    return true;
+    return !lowValid || !highValid || temperatureCalibrationPairValid(
+        record.lowRaw, record.lowTempC, record.highRaw, record.highTempC);
 }
 
 TemperatureCalibrationRecord makeTemperatureCalibrationRecord(

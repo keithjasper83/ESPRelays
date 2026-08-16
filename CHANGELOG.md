@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Reject equal, reversed, out-of-range, or non-numeric temperature calibration references before they can be reported as ready or persisted as a complete pair.
+- Preserve valid single-point records during guided capture and roll back in-memory changes if NVS persistence fails.
+
 ## v4.0.0 - 2026-08-16
 
 - Update artifact upload paths in CI workflow (c5ea68c)
@@ -25,4 +30,3 @@
 - Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (491f3cd)
 - fix: update OTA release info URL to point to the correct asset name (f57403a)
 - feat: Add temperature probe management and calibration features (6767168)
-

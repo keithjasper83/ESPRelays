@@ -28,6 +28,8 @@ struct TemperatureCalibrationRecord
 };
 
 uint32_t temperatureCalibrationCrc32(const TemperatureCalibrationRecord &record);
+bool temperatureCalibrationPairValid(
+    int32_t lowRaw, float lowTempC, int32_t highRaw, float highTempC);
 bool temperatureCalibrationRecordValid(const TemperatureCalibrationRecord &record);
 TemperatureCalibrationRecord makeTemperatureCalibrationRecord(
     bool lowValid, int32_t lowRaw, float lowTempC,

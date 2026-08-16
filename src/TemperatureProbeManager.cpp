@@ -265,7 +265,8 @@ float TemperatureProbeManager::currentTemperatureC() const
 
 bool TemperatureProbeManager::calibrationReady() const
 {
-    return lowPoint.valid && highPoint.valid && lowPoint.raw != highPoint.raw;
+    return lowPoint.valid && highPoint.valid && temperatureCalibrationPairValid(
+        lowPoint.raw, lowPoint.tempC, highPoint.raw, highPoint.tempC);
 }
 
 bool TemperatureProbeManager::lowPointValid() const
@@ -306,16 +307,30 @@ float TemperatureProbeManager::trimOffsetC() const
 bool TemperatureProbeManager::captureLow(float knownTempC, String &error)
 {
     loadCalibration();
+    if (!isfinite(knownTempC) || knownTempC < -100.0f || knownTempC > 200.0f)
+    {
+        error = "Low calibration temperature must be between -100 and 200 C";
+        return false;
+    }
     if (!hasValidReadingForCapture(error))
     {
         return false;
     }
 
+    if (highPoint.valid && !temperatureCalibrationPairValid(
+            savedCurrentTemperatureRaw, knownTempC, highPoint.raw, highPoint.tempC))
+    {
+        error = "Low reference must be colder than, and have a different ADC value from, the high reference";
+        return false;
+    }
+
+    const CalibrationPoint previousLow = lowPoint;
     lowPoint.valid = true;
     lowPoint.raw = savedCurrentTemperatureRaw;
     lowPoint.tempC = knownTempC;
     if (!persistCalibration())
     {
+        lowPoint = previousLow;
         error = "Failed to persist low calibration point";
         return false;
     }
@@ -326,16 +341,30 @@ bool TemperatureProbeManager::captureLow(float knownTempC, String &error)
 bool TemperatureProbeManager::captureHigh(float knownTempC, String &error)
 {
     loadCalibration();
+    if (!isfinite(knownTempC) || knownTempC < -100.0f || knownTempC > 200.0f)
+    {
+        error = "High calibration temperature must be between -100 and 200 C";
+        return false;
+    }
     if (!hasValidReadingForCapture(error))
     {
         return false;
     }
 
+    if (lowPoint.valid && !temperatureCalibrationPairValid(
+            lowPoint.raw, lowPoint.tempC, savedCurrentTemperatureRaw, knownTempC))
+    {
+        error = "High reference must be warmer than, and have a different ADC value from, the low reference";
+        return false;
+    }
+
+    const CalibrationPoint previousHigh = highPoint;
     highPoint.valid = true;
     highPoint.raw = savedCurrentTemperatureRaw;
     highPoint.tempC = knownTempC;
     if (!persistCalibration())
     {
+        highPoint = previousHigh;
         error = "Failed to persist high calibration point";
         return false;
     }
@@ -407,15 +436,9 @@ bool TemperatureProbeManager::restoreCalibration(
         error = "A restore requires both calibration references";
         return false;
     }
-    if (lowRaw < 0 || lowRaw > 4095 || highRaw < 0 || highRaw > 4095 || lowRaw == highRaw)
+    if (!temperatureCalibrationPairValid(lowRaw, lowTempC, highRaw, highTempC))
     {
-        error = "Calibration raw references must be distinct ADC values from 0 to 4095";
-        return false;
-    }
-    if (!isfinite(lowTempC) || !isfinite(highTempC) || lowTempC < -100.0f || lowTempC > 200.0f ||
-        highTempC < -100.0f || highTempC > 200.0f)
-    {
-        error = "Calibration temperatures must be between -100 and 200 C";
+        error = "Calibration requires distinct ADC values and an ordered low-to-high temperature pair from -100 to 200 C";
         return false;
     }
     if (!isfinite(newTrimOffsetC) || newTrimOffsetC < -20.0f || newTrimOffsetC > 20.0f)

@@ -26,6 +26,32 @@ void test_corrupt_record_is_rejected()
     TEST_ASSERT_FALSE(temperatureCalibrationRecordValid(record));
 }
 
+void test_equal_temperature_pair_is_rejected()
+{
+    const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
+        true, 2776, 0.0f, true, 2767, 0.0f, 0.0f, true);
+    TEST_ASSERT_FALSE(temperatureCalibrationRecordValid(record));
+}
+
+void test_reversed_temperature_pair_is_rejected()
+{
+    const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
+        true, 2800, 60.0f, true, 1200, 4.0f, 0.0f, true);
+    TEST_ASSERT_FALSE(temperatureCalibrationRecordValid(record));
+}
+
+void test_identical_adc_pair_is_rejected()
+{
+    TEST_ASSERT_FALSE(temperatureCalibrationPairValid(2000, 4.0f, 2000, 60.0f));
+}
+
+void test_single_point_record_remains_valid_during_guided_capture()
+{
+    const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
+        true, 2800, 4.0f, false, -1, 0.0f, 0.0f, true);
+    TEST_ASSERT_TRUE(temperatureCalibrationRecordValid(record));
+}
+
 void test_legacy_values_migrate_exactly_to_checksummed_record()
 {
     const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
@@ -78,6 +104,10 @@ int main(int argc, char **argv)
     UNITY_BEGIN();
     RUN_TEST(test_valid_record_passes_crc_and_validation);
     RUN_TEST(test_corrupt_record_is_rejected);
+    RUN_TEST(test_equal_temperature_pair_is_rejected);
+    RUN_TEST(test_reversed_temperature_pair_is_rejected);
+    RUN_TEST(test_identical_adc_pair_is_rejected);
+    RUN_TEST(test_single_point_record_remains_valid_during_guided_capture);
     RUN_TEST(test_legacy_values_migrate_exactly_to_checksummed_record);
     RUN_TEST(test_interrupted_blob_write_is_rejected_for_legacy_fallback);
     RUN_TEST(test_inactive_legacy_fields_are_still_migrated_byte_for_value);

@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include "AppConfig.h"
@@ -432,8 +433,12 @@ return json;
 
   bool parseCalibrationTemperatureC(const String &valueText, const String &unitText, float &tempC, String &error)
   {
-    const float parsed = valueText.toFloat();
-    if (isnan(parsed))
+    String normalizedValue = valueText;
+    normalizedValue.trim();
+    char *end = nullptr;
+    const char *start = normalizedValue.c_str();
+    const float parsed = strtof(start, &end);
+    if (normalizedValue.length() == 0 || end == start || *end != '\0' || !isfinite(parsed))
     {
       error = "Invalid temperature value";
       return false;
@@ -450,17 +455,23 @@ return json;
     if (unit == "c")
     {
       tempC = parsed;
-      return true;
     }
-
-    if (unit == "f")
+    else if (unit == "f")
     {
       tempC = (parsed - 32.0f) * (5.0f / 9.0f);
-      return true;
+    }
+    else
+    {
+      error = "temp_unit must be C or F";
+      return false;
     }
 
-    error = "temp_unit must be C or F";
-    return false;
+    if (!isfinite(tempC) || tempC < -100.0f || tempC > 200.0f)
+    {
+      error = "Calibration temperature must be between -100 and 200 C";
+      return false;
+    }
+    return true;
   }
 
   // Keep the root document small enough for the synchronous WebServer on the
