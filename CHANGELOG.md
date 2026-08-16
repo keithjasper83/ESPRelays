@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.1.0 - 2026-08-16
+
+- fix(calibration): reject invalid reference pairs (f7219f1)
+
 ## Unreleased
 
 - Reject equal, reversed, out-of-range, or non-numeric temperature calibration references before they can be reported as ready or persisted as a complete pair.
