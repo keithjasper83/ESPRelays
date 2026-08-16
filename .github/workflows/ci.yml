@@ -55,5 +55,6 @@ jobs:
         with:
           name: coverage-report
           path: |
+          retention-days: 10
             coverage.xml
             coverage.html
