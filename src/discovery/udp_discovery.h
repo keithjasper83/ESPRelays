@@ -35,6 +35,7 @@ struct DiscoveryConfig
 
     const DiscoveryEndpoint *endpoints;
     size_t endpointCount;
+    void (*unifiedServerDiscovered)(const String &serverUrl, const String &websocketUrl) = nullptr;
 };
 
 class UdpDiscovery
@@ -48,6 +49,7 @@ private:
     String buildPayload() const;
     String buildDeviceId() const;
     bool sendPayload(const String &payload);
+    void receivePackets();
     static String jsonEscape(const String &input);
 
     DiscoveryConfig config = {};

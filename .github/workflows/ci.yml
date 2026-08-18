@@ -28,6 +28,12 @@ jobs:
       - name: Build firmware
         run: pio run
 
+      - name: Verify firmware identity and OTA contract
+        run: |
+          grep -Eq 'FIRMWARE_VERSION\[] = "[0-9]+\.[0-9]+\.[0-9]+"' src/AppConfig.h
+          grep -q 'FIRMWARE_RELEASE_DATE\[]' src/AppConfig.h
+          grep -q 'firmware-esp32-c3-devkitm-1.bin' src/AppConfig.h
+
       - name: Run host tests
         run: pio test -vvv -e native
 
@@ -48,6 +54,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: coverage-report
+          retention-days: 10
           path: |
             coverage.xml
             coverage.html

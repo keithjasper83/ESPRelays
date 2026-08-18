@@ -4,3 +4,11 @@
 .vscode/launch.json
 .vscode/ipch
 src/AppConfig.local.h
+
+# Jarvis local state and credentials
+.jarvis-agent/
+.jarvis-portfolio/
+.env
+.env.*
+__pycache__/
+*.py[cod]

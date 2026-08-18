@@ -241,10 +241,12 @@ void test_web_routes_and_mqtt_path_match_router_commands()
     const std::string web = readWorkspaceFile("src/WebControlServer.cpp");
     const std::string mqtt = readWorkspaceFile("src/MqttManager.cpp");
     const std::string mainText = readWorkspaceFile("src/main.cpp");
+    const std::string wifi = readWorkspaceFile("src/WiFiManager.cpp");
 
     TEST_ASSERT_FALSE(web.empty());
     TEST_ASSERT_FALSE(mqtt.empty());
     TEST_ASSERT_FALSE(mainText.empty());
+    TEST_ASSERT_FALSE(wifi.empty());
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/on\", HTTP_POST"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.on(\"/off\", HTTP_POST"));
@@ -254,12 +256,17 @@ void test_web_routes_and_mqtt_path_match_router_commands()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"off\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"toggle\")"));
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("topicOpsWildcard = topicRoot + \"/+/+\""));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("if (operation == \"set\")"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("if (operation == \"get\" || operation == \"state\")"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("topicMatterbridgeWrite = matterbridgeRoot + \"/write/root\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("mqtt.subscribe(topicMatterbridgeWrite.c_str())"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("operationHandler(\"relay\", \"set\""));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("if (element == \"relay\" && (operation == \"get\" || operation == \"state\"))"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setOperationHandler(handleMqttOperation);"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setElementHandlers("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("unifiedServerClient.begin("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("unifiedServerClient.maintain("));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, wifi.find("WiFi.setSleep(false)"));
+    TEST_ASSERT_EQUAL(std::string::npos, mainText.find("esp_light_sleep_start"));
+    TEST_ASSERT_EQUAL(std::string::npos, mainText.find("esp_deep_sleep_start"));
 }
 
 int main(int argc, char **argv)

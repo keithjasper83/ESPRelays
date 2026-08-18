@@ -41,6 +41,9 @@ public:
     bool captureHighUsingSavedTemp(String &error);
     bool resetCalibration(String &error);
     bool setTrimOffsetC(float offsetC, String &error);
+    bool restoreCalibration(bool lowValid, int lowRaw, float lowTempC,
+                            bool highValid, int highRaw, float highTempC,
+                            float trimOffsetC, bool monitoringEnabled, String &error);
 
     bool shouldRunTemperatureDependentFunctions() const;
 
@@ -66,4 +69,5 @@ private:
     float trimOffset = 0.0f;
     CalibrationPoint lowPoint;
     CalibrationPoint highPoint;
+    uint8_t calibrationGeneration = 0;
 };

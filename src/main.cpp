@@ -11,6 +11,7 @@
 #include <esp_bt.h>
 #include <ctype.h>
 #include <time.h>
+#include <esp32-hal-cpu.h>
 
 #include "AppConfig.h"
 #include "ButtonManager.h"
@@ -20,10 +21,12 @@
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
 #include "ScheduleManager.h"
-#include "Telemetry.h"
+#include "telemetry.h"
 #include "TimeSyncManager.h"
 #include "TemperatureProbeManager.h"
+#include "TemperatureCalibrationRecord.h"
 #include "WebControlServer.h"
+#include "UnifiedServerClient.h"
 #include "WiFiManager.h"
 #include "discovery/udp_discovery.h"
 
@@ -42,6 +45,7 @@ ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
 TemperatureProbeManager temperatureProbeManager;
 Telemetry telemetry;
+UnifiedServerClient unifiedServerClient;
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastTimestampLog = 0;
@@ -144,6 +148,8 @@ bool setRelayAutoOffMinutes(int minutes, String &error);
 bool getRelayAutoOffArmed();
 long getRelayAutoOffRemainingSeconds();
 bool getTemperatureProbePresent();
+bool getTemperatureMonitoringEnabled();
+bool setTemperatureMonitoringEnabled(bool enabled, String &error);
 int getTemperatureProbeRaw();
 int getCurrentTemperatureRaw();
 float getCurrentTemperatureC();
@@ -179,6 +185,16 @@ uint8_t mqttGetLedStripMasterBrightness();
 void mqttSetLedStripMasterBrightness(uint8_t brightness);
 bool mqttGetLedStripBootAnimation();
 bool mqttSetLedStripBootAnimation(bool active);
+String getUnifiedRegistrationJson();
+String getUnifiedCalibrationJson();
+String getUnifiedStateJson();
+bool handleUnifiedCommand(bool desiredOn, String &error);
+String getUnifiedSettingsJson();
+bool handleUnifiedSettings(JsonObjectConst values, String &error);
+bool handleUnifiedCalibration(JsonObjectConst values, String &error);
+void scheduleUnifiedRestart();
+bool configureUnifiedServer(const String &serverUrl, String &error);
+void handleUnifiedServerDiscovered(const String &serverUrl, const String &websocketUrl);
 
 String sanitizeHostname(const String &requested)
 {
@@ -234,6 +250,7 @@ void onRelayStateChanged(bool state)
     udpDiscovery.advertiseNow();
     telemetry.setRelayState("relay0", state, "button");
     telemetry.setControlState(CONTROL_STATE_ON, CONTROL_STATE_OFF, "manual", "button");
+    unifiedServerClient.publishState();
 }
 
 void disableBluetooth()
@@ -558,15 +575,205 @@ String getDiscoveryFirmwareVersion()
 
 String getDiscoveryStateJson()
 {
-    String state = "{\"relay\":\"";
-    state += relayController.isOn() ? "on" : "off";
-    state += "\"}";
-    return state;
+    return getUnifiedStateJson();
 }
 
 String getDiscoveryCapabilitiesJson()
 {
-    return "[\"relay\",\"http\",\"status\",\"toggle\"]";
+    return "[\"relay\",\"http\",\"websocket\",\"status\",\"toggle\",\"temperature\",\"calibration\",\"settings\",\"restart\"]";
+}
+
+String getUnifiedStateJson()
+{
+    String state = "{\"hostname\":\"" + deviceHostname + "\",\"relay\":\"";
+    state += relayController.isOn() ? "on" : "off";
+    state += "\",\"temperature_probe_present\":";
+    state += temperatureProbeManager.isPresent() ? "true" : "false";
+    state += ",\"temperature_monitoring_enabled\":";
+    state += temperatureProbeManager.isEnabled() ? "true" : "false";
+    state += ",\"temperature_probe_raw\":" + String(temperatureProbeManager.rawReading());
+    state += ",\"current_temperature_raw\":" + String(temperatureProbeManager.currentTemperatureRaw());
+    state += ",\"current_temperature_c\":";
+    const float temperatureC = temperatureProbeManager.currentTemperatureC();
+    state += isnan(temperatureC) ? "null" : String(temperatureC, 2);
+    state += ",\"temperature_calibration_ready\":";
+    state += temperatureProbeManager.calibrationReady() ? "true" : "false";
+    state += ",\"temperature_calibration_low_valid\":";
+    state += temperatureProbeManager.lowPointValid() ? "true" : "false";
+    state += ",\"temperature_calibration_low_raw\":" + String(temperatureProbeManager.lowPointRaw());
+    state += ",\"temperature_calibration_low_c\":";
+    state += temperatureProbeManager.lowPointValid() ? String(temperatureProbeManager.lowPointTempC(), 2) : "null";
+    state += ",\"temperature_calibration_high_valid\":";
+    state += temperatureProbeManager.highPointValid() ? "true" : "false";
+    state += ",\"temperature_calibration_high_raw\":" + String(temperatureProbeManager.highPointRaw());
+    state += ",\"temperature_calibration_high_c\":";
+    state += temperatureProbeManager.highPointValid() ? String(temperatureProbeManager.highPointTempC(), 2) : "null";
+    state += ",\"temperature_calibration_record_version\":" + String(TEMPERATURE_CALIBRATION_VERSION);
+    state += ",\"temperature_trim_offset_c\":" + String(temperatureProbeManager.trimOffsetC(), 2);
+    state += ",\"rssi\":" + String(WiFi.RSSI());
+    state += ",\"uptime_ms\":" + String(millis()) + "}";
+    return state;
+}
+
+String getUnifiedCalibrationJson()
+{
+    String json = "{\"record_version\":" + String(TEMPERATURE_CALIBRATION_VERSION);
+    json += ",\"ready\":";
+    json += temperatureProbeManager.calibrationReady() ? "true" : "false";
+    json += ",\"low\":{\"valid\":";
+    json += temperatureProbeManager.lowPointValid() ? "true" : "false";
+    json += ",\"raw\":" + String(temperatureProbeManager.lowPointRaw()) + ",\"temp_c\":";
+    json += temperatureProbeManager.lowPointValid() ? String(temperatureProbeManager.lowPointTempC(), 4) : "null";
+    json += "},\"high\":{\"valid\":";
+    json += temperatureProbeManager.highPointValid() ? "true" : "false";
+    json += ",\"raw\":" + String(temperatureProbeManager.highPointRaw()) + ",\"temp_c\":";
+    json += temperatureProbeManager.highPointValid() ? String(temperatureProbeManager.highPointTempC(), 4) : "null";
+    json += "},\"trim_offset_c\":" + String(temperatureProbeManager.trimOffsetC(), 4);
+    json += ",\"monitoring_enabled\":";
+    json += temperatureProbeManager.isEnabled() ? "true" : "false";
+    json += "}";
+    return json;
+}
+
+String getUnifiedRegistrationJson()
+{
+    String mac = WiFi.macAddress();
+    mac.toLowerCase();
+    mac.replace(":", "");
+    const String deviceId = "esp32-" + deviceHostname + "-" + mac;
+    const String ip = WiFi.localIP().toString();
+    String registration = "{\"device_id\":\"" + deviceId + "\",\"device_name\":\"" + deviceHostname;
+    registration += "\",\"device_type\":\"relay\",\"firmware\":{\"name\":\"" + String(FIRMWARE_NAME);
+    registration += "\",\"version\":\"" + String(FIRMWARE_VERSION) + "\",\"release_date\":\"" + String(FIRMWARE_RELEASE_DATE) + "\"}";
+    registration += ",\"configuration_key\":\"relay:" + deviceHostname + "\",\"network\":{\"ip\":\"" + ip;
+    registration += "\",\"base_url\":\"http://" + ip + "/\"},\"advanced_url\":\"http://" + ip + "/\"";
+    registration += ",\"capabilities\":" + getDiscoveryCapabilitiesJson() + ",\"state\":" + getUnifiedStateJson() + "}";
+    return registration;
+}
+
+bool handleUnifiedCommand(bool desiredOn, String &error)
+{
+    (void)error;
+    if (desiredOn)
+    {
+        relayController.set(true);
+    }
+    else
+    {
+        relayController.set(false);
+    }
+    return relayController.isOn() == desiredOn;
+}
+
+String getUnifiedSettingsJson()
+{
+    String json = "{\"revision\":1,\"values\":{\"relay_auto_off_minutes\":";
+    json += String(relayController.autoOffMinutes());
+    json += ",\"temperature_monitoring_enabled\":";
+    json += temperatureProbeManager.isEnabled() ? "true" : "false";
+    json += ",\"temperature_trim_offset_c\":" + String(temperatureProbeManager.trimOffsetC(), 2);
+    json += ",\"ota_auto_schedule_enabled\":";
+    json += otaAutoScheduleEnabled ? "true" : "false";
+    json += "},\"schema\":{";
+    json += "\"relay_auto_off_minutes\":{\"type\":\"integer\",\"label\":\"Auto-off timer\",\"description\":\"Minutes after switching on before the relay turns itself off. Use 0 to disable.\",\"unit\":\"minutes\",\"min\":0,\"max\":10080,\"step\":1},";
+    json += "\"temperature_monitoring_enabled\":{\"type\":\"boolean\",\"label\":\"Temperature monitoring\",\"description\":\"Keep the configured analogue temperature probe active.\"},";
+    json += "\"temperature_trim_offset_c\":{\"type\":\"number\",\"label\":\"Temperature trim\",\"description\":\"Fine adjustment only; this does not replace two-reference calibration.\",\"unit\":\"°C\",\"min\":-20,\"max\":20,\"step\":0.1},";
+    json += "\"ota_auto_schedule_enabled\":{\"type\":\"boolean\",\"label\":\"Weekly OTA check\",\"description\":\"Keep the existing Monday 10:30 firmware update check scheduled.\"}";
+    json += "},\"calibration\":{\"ready\":";
+    json += temperatureProbeManager.calibrationReady() ? "true" : "false";
+    json += ",\"message\":\"Two-reference capture is available in the native console; complete calibrations are backed up by Unified Server.\",\"record\":";
+    json += getUnifiedCalibrationJson();
+    json += "}";
+    json += "}";
+    return json;
+}
+
+bool handleUnifiedCalibration(JsonObjectConst values, String &error)
+{
+    const JsonObjectConst low = values["low"].as<JsonObjectConst>();
+    const JsonObjectConst high = values["high"].as<JsonObjectConst>();
+    if (low.isNull() || high.isNull() || !low["valid"].is<bool>() || !high["valid"].is<bool>() ||
+        !low["raw"].is<int>() || !high["raw"].is<int>() ||
+        (!low["temp_c"].is<float>() && !low["temp_c"].is<int>()) ||
+        (!high["temp_c"].is<float>() && !high["temp_c"].is<int>()))
+    {
+        error = "Calibration payload is incomplete";
+        return false;
+    }
+    return temperatureProbeManager.restoreCalibration(
+        low["valid"].as<bool>(), low["raw"].as<int>(), low["temp_c"].as<float>(),
+        high["valid"].as<bool>(), high["raw"].as<int>(), high["temp_c"].as<float>(),
+        values["trim_offset_c"] | 0.0f, values["monitoring_enabled"] | true, error);
+}
+
+bool handleUnifiedSettings(JsonObjectConst values, String &error)
+{
+    const JsonVariantConst autoOff = values["relay_auto_off_minutes"];
+    const JsonVariantConst temperatureEnabled = values["temperature_monitoring_enabled"];
+    const JsonVariantConst temperatureTrim = values["temperature_trim_offset_c"];
+    const JsonVariantConst otaSchedule = values["ota_auto_schedule_enabled"];
+    const bool hasAutoOff = !autoOff.isNull();
+    const bool hasTemperatureEnabled = !temperatureEnabled.isNull();
+    const bool hasTemperatureTrim = !temperatureTrim.isNull();
+    const bool hasOtaSchedule = !otaSchedule.isNull();
+
+    if (hasAutoOff)
+    {
+        if (!autoOff.is<int>() || autoOff.as<int>() < 0 || autoOff.as<int>() > 10080)
+        {
+            error = "relay_auto_off_minutes must be between 0 and 10080";
+            return false;
+        }
+    }
+    if (hasTemperatureEnabled && !temperatureEnabled.is<bool>())
+    {
+        error = "temperature_monitoring_enabled must be boolean";
+        return false;
+    }
+    if (hasTemperatureTrim)
+    {
+        if ((!temperatureTrim.is<float>() && !temperatureTrim.is<int>()) ||
+            temperatureTrim.as<float>() < -20.0f || temperatureTrim.as<float>() > 20.0f)
+        {
+            error = "temperature_trim_offset_c must be between -20 and 20";
+            return false;
+        }
+    }
+    if (hasOtaSchedule && !otaSchedule.is<bool>())
+    {
+        error = "ota_auto_schedule_enabled must be boolean";
+        return false;
+    }
+
+    if (hasAutoOff && !setRelayAutoOffMinutes(autoOff.as<int>(), error)) return false;
+    if (hasTemperatureEnabled && !setTemperatureMonitoringEnabled(temperatureEnabled.as<bool>(), error)) return false;
+    if (hasTemperatureTrim && !setTemperatureTrimOffsetC(temperatureTrim.as<float>(), error)) return false;
+    if (hasOtaSchedule && !setOtaAutoScheduleEnabled(otaSchedule.as<bool>(), error)) return false;
+    return true;
+}
+
+bool unifiedRestartPending = false;
+unsigned long unifiedRestartAtMs = 0;
+
+void scheduleUnifiedRestart()
+{
+    unifiedRestartPending = true;
+    unifiedRestartAtMs = millis() + 1000UL;
+}
+
+bool configureUnifiedServer(const String &serverUrl, String &error)
+{
+    return unifiedServerClient.configureFromServerUrl(serverUrl, error);
+}
+
+void handleUnifiedServerDiscovered(const String &serverUrl, const String &websocketUrl)
+{
+    (void)serverUrl;
+    String error;
+    if (!unifiedServerClient.configureFromWebSocketUrl(websocketUrl, error) && debugLogging)
+    {
+        Serial.println("[UNIFIED] Discovery rejected: " + error);
+    }
 }
 
 String getDiscoveryModel()
@@ -1075,6 +1282,10 @@ void setup()
     Serial.begin(115200);
     delay(2500);
 
+    const bool cpuReduced = setCpuFrequencyMhz(80);
+    Serial.printf("[POWER] CPU frequency=%u MHz reduced=%s deep_sleep=disabled light_sleep=disabled\n",
+                  static_cast<unsigned>(getCpuFrequencyMhz()), cpuReduced ? "true" : "false");
+
     setupDebugLogging();
 
     bootTime = millis();
@@ -1168,6 +1379,7 @@ void setup()
     webContext.getWifiLedTestActive = getWifiLedTestActive;
     webContext.getLedActiveHigh = getLedActiveHigh;
     webContext.setLedActiveHigh = setLedActiveHigh;
+    webContext.setUnifiedServer = configureUnifiedServer;
     webControlServer.configure(webContext);
 
     if (debugLogging)
@@ -1206,7 +1418,12 @@ void setup()
     discoveryConfig.modelProvider = getDiscoveryModel;
     discoveryConfig.endpoints = DISCOVERY_ENDPOINTS;
     discoveryConfig.endpointCount = sizeof(DISCOVERY_ENDPOINTS) / sizeof(DISCOVERY_ENDPOINTS[0]);
+    discoveryConfig.unifiedServerDiscovered = handleUnifiedServerDiscovered;
     udpDiscovery.begin(discoveryConfig);
+
+    unifiedServerClient.begin(getUnifiedRegistrationJson, getUnifiedStateJson, handleUnifiedCommand,
+                              getUnifiedSettingsJson, handleUnifiedSettings,
+                              getUnifiedCalibrationJson, handleUnifiedCalibration, scheduleUnifiedRestart);
 
     commandRouter.printHelp(Serial);
 }
@@ -1225,6 +1442,11 @@ void loop()
     mqttManager.maintain(wifiManager.isConnected(), relayController.isOn());
     temperatureProbeManager.maintain(millis());
     udpDiscovery.loop(wifiManager.isConnected());
+    unifiedServerClient.maintain(wifiManager.isConnected());
+    if (unifiedRestartPending && static_cast<long>(millis() - unifiedRestartAtMs) >= 0)
+    {
+        ESP.restart();
+    }
     telemetry.loop();
 
     if (wifiManager.isConnected() && !lastDiscoveryWifiConnected)

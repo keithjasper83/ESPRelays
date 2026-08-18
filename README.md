@@ -170,6 +170,26 @@ Board, firmware version, network setup, and MQTT usage (if any).
 - Suggestions and bugs: https://github.com/keithjasper83/ESPRelays/issues
 - Trademark/branding permissions: see [docs/TRADEMARKS.md](docs/TRADEMARKS.md)
 
+## ESP Home Unified Server
+
+Firmware 3.1.0 listens for the local Unified Server beacon on
+`239.255.42.99:42424` and opens one outbound WebSocket for registration,
+heartbeats, state, idempotent relay commands, and acknowledgements. `GET
+/unified/hello?server=http://192.168.0.50:8111` provides the server's reverse
+probe path. This connection never uses MQTT; the existing MQTT/Matterbridge and
+native HTTP interfaces remain available independently for compatibility.
+
+Wi-Fi sleep and ESP light/deep sleep are disabled. The CPU runs at 80 MHz while
+the relay, button, discovery, WebSocket, HTTP, and OTA loops remain responsive.
+Temperature calibration is stored as a versioned CRC32-protected NVS record.
+Two alternating checksummed slots protect the last confirmed calibration from
+an interrupted write. Unified Server receives immutable copies of every
+calibration state and can explicitly restore a complete record to replacement
+hardware using the same logical hostname.
+The first 3.x boot migrates the existing `temp_probe` values exactly and keeps
+the legacy keys mirrored for safe downgrade. OTA does not erase NVS, and
+calibration values change only after an explicit capture, reset, or trim action.
+
 ## License
 
 This project is licensed under Apache License 2.0.
