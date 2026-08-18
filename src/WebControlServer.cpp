@@ -1494,6 +1494,9 @@ function runLedBootAnimation() {
       if (obj.hostname) {
         ids.hostnameInput.value = obj.hostname;
       }
+      if (obj.mdns_host) {
+        document.title = obj.mdns_host + ' - RelayControl';
+      }
       if (obj.device_name) ids.deviceName.textContent = obj.device_name;
       if (obj.device_type) ids.deviceType.textContent = obj.device_type;
       if (obj.firmware) ids.firmware.textContent = obj.firmware.name + ' ' + obj.firmware.version;
