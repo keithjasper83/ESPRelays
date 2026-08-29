@@ -26,11 +26,6 @@ namespace
     constexpr char TEMP_PREF_RECORD_A[] = "cal_a";
     constexpr char TEMP_PREF_RECORD_B[] = "cal_b";
 
-    bool isProbeInValidRange(int rawValue)
-    {
-        return rawValue > TEMP_PROBE_PRESENT_MIN_RAW && rawValue < TEMP_PROBE_PRESENT_MAX_RAW;
-    }
-
     bool readRecord(Preferences &preferences, const char *key, TemperatureCalibrationRecord &record)
     {
         return preferences.getBytesLength(key) == sizeof(record) &&
@@ -191,6 +186,7 @@ void TemperatureProbeManager::maintain(unsigned long nowMs)
 {
     if (!enabled)
     {
+        probePresenceFilter.reset();
         probePresent = false;
         lastRawReading = -1;
         savedCurrentTemperatureRaw = -1;
@@ -207,14 +203,8 @@ void TemperatureProbeManager::maintain(unsigned long nowMs)
     const int raw = analogRead(TEMP_PROBE_ADC_PIN);
     lastRawReading = raw;
 
-    probePresent = isProbeInValidRange(raw);
-    if (probePresent)
-    {
-        savedCurrentTemperatureRaw = raw;
-        return;
-    }
-
-    savedCurrentTemperatureRaw = -1;
+    probePresent = probePresenceFilter.update(raw, enabled);
+    savedCurrentTemperatureRaw = probePresenceFilter.stableRaw();
 }
 
 bool TemperatureProbeManager::isPresent() const
@@ -234,6 +224,7 @@ bool TemperatureProbeManager::setEnabled(bool newEnabled, String &error)
     probePresent = false;
     lastRawReading = -1;
     savedCurrentTemperatureRaw = -1;
+    probePresenceFilter.reset();
     lastSampleAtMs = 0;
     if (!persistCalibration())
     {
@@ -250,7 +241,7 @@ int TemperatureProbeManager::rawReading() const
 
 int TemperatureProbeManager::currentTemperatureRaw() const
 {
-    return savedCurrentTemperatureRaw;
+    return probePresenceFilter.stableRaw();
 }
 
 float TemperatureProbeManager::currentTemperatureC() const

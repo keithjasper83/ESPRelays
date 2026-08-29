@@ -10,6 +10,7 @@
 #include <math.h>
 
 #include "AppConfig.h"
+#include "ProbePresenceFilter.h"
 
 class Telemetry;
 
@@ -70,4 +71,8 @@ private:
     CalibrationPoint lowPoint;
     CalibrationPoint highPoint;
     uint8_t calibrationGeneration = 0;
+    ProbePresenceFilter probePresenceFilter{TEMP_PROBE_PRESENT_STABLE_SAMPLES,
+                                            TEMP_PROBE_ABSENT_STABLE_SAMPLES,
+                                            TEMP_PROBE_PRESENT_MIN_RAW,
+                                            TEMP_PROBE_PRESENT_MAX_RAW};
 };
