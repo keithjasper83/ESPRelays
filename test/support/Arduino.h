@@ -12,6 +12,8 @@
 #include <cstdlib>
 #include <string>
 
+#include "FakeRuntime.h"
+
 class String
 {
 public:
@@ -145,9 +147,22 @@ inline void delay(unsigned long)
 }
 
 constexpr int INPUT = 0;
+constexpr int OUTPUT = 1;
+constexpr int LOW = 0;
+constexpr int HIGH = 1;
 
-inline void pinMode(int, int)
+inline void pinMode(int pin, int mode)
 {
+    FakeRuntime::pinModes[pin] = mode;
+    FakeRuntime::events.push_back(
+        "gpio.pinMode:" + std::to_string(pin) + ":" + std::to_string(mode));
+}
+
+inline void digitalWrite(int pin, int level)
+{
+    FakeRuntime::pinLevels[pin] = level;
+    FakeRuntime::events.push_back(
+        "gpio.digitalWrite:" + std::to_string(pin) + ":" + std::to_string(level));
 }
 
 inline void analogReadResolution(int)

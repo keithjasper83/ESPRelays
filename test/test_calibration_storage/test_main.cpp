@@ -162,6 +162,17 @@ void test_set_enabled_restores_enabled_state_after_failed_verification()
     assertManagerStorageFailure(manager);
 }
 
+void test_successful_manager_write_reports_the_new_ab_slot_and_generation()
+{
+    TemperatureProbeManager manager = managerWithPersistedRecord();
+    String error;
+
+    TEST_ASSERT_TRUE(manager.setTrimOffsetC(2.0f, error));
+    TEST_ASSERT_TRUE(manager.lastStorageWriteVerified());
+    TEST_ASSERT_EQUAL_STRING("cal_b", manager.selectedStorageSlot());
+    TEST_ASSERT_EQUAL_UINT8(11, manager.calibrationGenerationValue());
+}
+
 void test_capture_low_restores_low_point_after_failed_verification()
 {
     TemperatureProbeManager manager = managerWithPersistedRecord();
@@ -220,6 +231,12 @@ void test_set_trim_offset_restores_trim_after_failed_verification()
 void test_restore_calibration_restores_all_values_after_failed_verification()
 {
     TemperatureProbeManager manager = managerWithPersistedRecord();
+    for (int sample = 0; sample < 5; ++sample)
+        manager.probePresenceFilter.update(700, true);
+    manager.probePresent = manager.probePresenceFilter.present();
+    manager.lastRawReading = 700;
+    manager.savedCurrentTemperatureRaw = manager.probePresenceFilter.stableRaw();
+    manager.lastSampleAtMs = 123;
     rejectNextManagerWrite();
     String error;
 
@@ -234,7 +251,33 @@ void test_restore_calibration_restores_all_values_after_failed_verification()
     TEST_ASSERT_EQUAL_INT(3000, manager.highPointRaw());
     TEST_ASSERT_EQUAL_FLOAT(50.0f, manager.highPointTempC());
     TEST_ASSERT_EQUAL_FLOAT(1.0f, manager.trimOffsetC());
+    TEST_ASSERT_TRUE(manager.isPresent());
+    TEST_ASSERT_EQUAL_INT(700, manager.rawReading());
+    TEST_ASSERT_EQUAL_INT(700, manager.currentTemperatureRaw());
+    TEST_ASSERT_EQUAL_UINT32(123, manager.lastSampleAtMs);
     assertManagerStorageFailure(manager);
+}
+
+void test_restore_with_monitoring_disabled_clears_sampling_state_transactionally()
+{
+    TemperatureProbeManager manager = managerWithPersistedRecord();
+    for (int sample = 0; sample < 5; ++sample)
+        manager.probePresenceFilter.update(700, true);
+    manager.probePresent = manager.probePresenceFilter.present();
+    manager.lastRawReading = 700;
+    manager.savedCurrentTemperatureRaw = manager.probePresenceFilter.stableRaw();
+    manager.lastSampleAtMs = 123;
+    String error;
+
+    TEST_ASSERT_TRUE(manager.restoreCalibration(true, 800, 0.0f,
+                                                 true, 3500, 75.0f,
+                                                 2.5f, false, error));
+    TEST_ASSERT_FALSE(manager.isEnabled());
+    TEST_ASSERT_FALSE(manager.isPresent());
+    TEST_ASSERT_EQUAL_INT(-1, manager.rawReading());
+    TEST_ASSERT_EQUAL_INT(-1, manager.currentTemperatureRaw());
+    TEST_ASSERT_EQUAL_UINT32(0, manager.lastSampleAtMs);
+    TEST_ASSERT_FALSE(manager.shouldRunTemperatureDependentFunctions());
 }
 
 int main(int argc, char **argv)
@@ -248,10 +291,12 @@ int main(int argc, char **argv)
     RUN_TEST(test_select_newest_falls_back_from_corrupt_newer_slot);
     RUN_TEST(test_select_newest_handles_generation_wrap_from_255_to_zero);
     RUN_TEST(test_set_enabled_restores_enabled_state_after_failed_verification);
+    RUN_TEST(test_successful_manager_write_reports_the_new_ab_slot_and_generation);
     RUN_TEST(test_capture_low_restores_low_point_after_failed_verification);
     RUN_TEST(test_capture_high_restores_high_point_after_failed_verification);
     RUN_TEST(test_reset_calibration_restores_both_points_after_failed_verification);
     RUN_TEST(test_set_trim_offset_restores_trim_after_failed_verification);
     RUN_TEST(test_restore_calibration_restores_all_values_after_failed_verification);
+    RUN_TEST(test_restore_with_monitoring_disabled_clears_sampling_state_transactionally);
     return UNITY_END();
 }

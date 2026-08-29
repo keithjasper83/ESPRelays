@@ -134,6 +134,7 @@ bool TemperatureProbeManager::persistCalibration()
     if (recordSaved)
     {
         calibrationGeneration = nextGeneration;
+        storageSlot = target;
         preferences.putBool(TEMP_PREF_LOW_VALID, lowPoint.valid);
         preferences.putInt(TEMP_PREF_LOW_RAW, lowPoint.raw);
         preferences.putFloat(TEMP_PREF_LOW_TEMP, lowPoint.tempC);
@@ -506,6 +507,11 @@ bool TemperatureProbeManager::restoreCalibration(
     const float previousTrim = trimOffset;
     const bool previousEnabled = enabled;
     const uint8_t previousGeneration = calibrationGeneration;
+    const bool previousProbePresent = probePresent;
+    const int previousLastRawReading = lastRawReading;
+    const int previousSavedCurrentTemperatureRaw = savedCurrentTemperatureRaw;
+    const unsigned long previousLastSampleAtMs = lastSampleAtMs;
+    const ProbePresenceFilter previousProbePresenceFilter = probePresenceFilter;
     lowPoint.valid = true;
     lowPoint.raw = lowRaw;
     lowPoint.tempC = lowTempC;
@@ -514,6 +520,14 @@ bool TemperatureProbeManager::restoreCalibration(
     highPoint.tempC = highTempC;
     trimOffset = newTrimOffsetC;
     enabled = monitoringEnabled;
+    if (!enabled)
+    {
+        probePresent = false;
+        lastRawReading = -1;
+        savedCurrentTemperatureRaw = -1;
+        lastSampleAtMs = 0;
+        probePresenceFilter.reset();
+    }
     if (!persistCalibration())
     {
         lowPoint = previousLow;
@@ -521,6 +535,11 @@ bool TemperatureProbeManager::restoreCalibration(
         trimOffset = previousTrim;
         enabled = previousEnabled;
         calibrationGeneration = previousGeneration;
+        probePresent = previousProbePresent;
+        lastRawReading = previousLastRawReading;
+        savedCurrentTemperatureRaw = previousSavedCurrentTemperatureRaw;
+        lastSampleAtMs = previousLastSampleAtMs;
+        probePresenceFilter = previousProbePresenceFilter;
         error = "Failed to persist restored calibration";
         return false;
     }
