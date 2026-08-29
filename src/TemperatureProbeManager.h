@@ -35,6 +35,10 @@ public:
     float lowPointTempC() const;
     float highPointTempC() const;
     float trimOffsetC() const;
+    bool storageLoadOk() const;
+    bool lastStorageWriteVerified() const;
+    const char *selectedStorageSlot() const;
+    uint8_t calibrationGenerationValue() const;
 
     bool captureLow(float knownTempC, String &error);
     bool captureHigh(float knownTempC, String &error);
@@ -71,6 +75,9 @@ private:
     CalibrationPoint lowPoint;
     CalibrationPoint highPoint;
     uint8_t calibrationGeneration = 0;
+    bool storageLoadSucceeded = false;
+    bool lastStorageWriteWasVerified = false;
+    const char *storageSlot = "none";
     ProbePresenceFilter probePresenceFilter{TEMP_PROBE_PRESENT_STABLE_SAMPLES,
                                             TEMP_PROBE_ABSENT_STABLE_SAMPLES,
                                             TEMP_PROBE_PRESENT_MIN_RAW,
