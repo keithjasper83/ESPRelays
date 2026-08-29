@@ -123,6 +123,25 @@ void test_unified_configuration_and_restart_contract_exists()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, client.find("restart_result"));
 }
 
+void test_unified_state_keeps_existing_keys_and_exposes_recovery_diagnostics()
+{
+    const std::string mainSource = readWorkspaceFile("src/main.cpp");
+    TEST_ASSERT_FALSE(mainSource.empty());
+
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"relay\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_calibration_ready\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_calibration_low_valid\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_calibration_high_valid\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"reset_reason\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"brownout_count\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"relay_boot_failsafe_applied\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_probe_stable\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_storage_load_ok\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_storage_write_verified\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_storage_slot\\\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainSource.find("\\\"temperature_storage_generation\\\""));
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
@@ -134,5 +153,6 @@ int main(int argc, char **argv)
     RUN_TEST(test_time_and_schedule_handlers_read_form_fields_and_validate);
     RUN_TEST(test_json_status_endpoints_exist);
     RUN_TEST(test_unified_configuration_and_restart_contract_exists);
+    RUN_TEST(test_unified_state_keeps_existing_keys_and_exposes_recovery_diagnostics);
     return UNITY_END();
 }
