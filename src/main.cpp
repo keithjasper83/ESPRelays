@@ -9,6 +9,7 @@
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_bt.h>
+#include <esp_system.h>
 #include <ctype.h>
 #include <time.h>
 #include <esp32-hal-cpu.h>
@@ -20,6 +21,7 @@
 #include "MqttManager.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
+#include "ResetDiagnostics.h"
 #include "ScheduleManager.h"
 #include "telemetry.h"
 #include "TimeSyncManager.h"
@@ -65,9 +67,47 @@ namespace
     constexpr char DEVICE_PREF_NAMESPACE[] = "device_cfg";
     constexpr char DEVICE_PREF_HOSTNAME[] = "hostname";
     constexpr char DEVICE_PREF_OTA_AUTO_SCHEDULE[] = "ota_auto_sched";
+    constexpr char RESET_DIAG_PREF_NAMESPACE[] = "reset_diag";
+    constexpr char RESET_DIAG_PREF_BROWNOUT_COUNT[] = "brownout_count";
     constexpr unsigned long LED_TEST_DURATION_MS = 5000;
     constexpr unsigned long SERIAL_IDLE_SUBMIT_MS = 1200;
     constexpr size_t SERIAL_MAX_COMMAND_LEN = 128;
+
+    DeviceResetReason classifyEspResetReason(const esp_reset_reason_t reason)
+    {
+        switch (reason)
+        {
+        case ESP_RST_BROWNOUT: return DeviceResetReason::Brownout;
+        case ESP_RST_POWERON: return DeviceResetReason::PowerOn;
+        case ESP_RST_SW: return DeviceResetReason::Software;
+        case ESP_RST_EXT: return DeviceResetReason::External;
+        case ESP_RST_PANIC: return DeviceResetReason::Panic;
+        case ESP_RST_DEEPSLEEP: return DeviceResetReason::DeepSleep;
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT: return DeviceResetReason::Watchdog;
+        default: return DeviceResetReason::Unknown;
+        }
+    }
+
+    uint32_t recordBrownoutCount(const DeviceResetReason reason)
+    {
+        Preferences preferences;
+        if (!preferences.begin(RESET_DIAG_PREF_NAMESPACE, false))
+        {
+            Serial.println("[NVS] Warning: reset diagnostics preferences unavailable.");
+            return 0;
+        }
+
+        uint32_t brownoutCount = preferences.getULong(RESET_DIAG_PREF_BROWNOUT_COUNT, 0);
+        if (reason == DeviceResetReason::Brownout && brownoutCount < UINT32_MAX)
+        {
+            ++brownoutCount;
+            preferences.putULong(RESET_DIAG_PREF_BROWNOUT_COUNT, brownoutCount);
+        }
+        preferences.end();
+        return brownoutCount;
+    }
 
     bool parseOnOff(const String &payload, bool &on)
     {
@@ -1279,8 +1319,13 @@ void applyWeeklyOtaUpdateSchedule()
 
 void setup()
 {
+    const DeviceResetReason bootResetReason = classifyEspResetReason(esp_reset_reason());
     Serial.begin(115200);
     delay(2500);
+
+    const uint32_t brownoutCount = recordBrownoutCount(bootResetReason);
+    Serial.printf("[RESET] reason=%s brownout_count=%lu\n", deviceResetReasonName(bootResetReason),
+                  static_cast<unsigned long>(brownoutCount));
 
     const bool cpuReduced = setCpuFrequencyMhz(80);
     Serial.printf("[POWER] CPU frequency=%u MHz reduced=%s deep_sleep=disabled light_sleep=disabled\n",
@@ -1307,7 +1352,7 @@ void setup()
     buttonManager.setResetButtonCallback(handleResetButtonPress);
     buttonManager.setFactoryResetCallback(handleFactoryResetButtonHold);
 
-    relayController.begin();
+    relayController.begin(shouldForceRelayOff(bootResetReason));
     relayController.setStateChangedCallback(onRelayStateChanged);
 
     TelemetryDevice deviceInfo = {
