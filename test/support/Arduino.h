@@ -143,3 +143,23 @@ inline EspStub ESP;
 inline void delay(unsigned long)
 {
 }
+
+constexpr int INPUT = 0;
+
+inline void pinMode(int, int)
+{
+}
+
+inline void analogReadResolution(int)
+{
+}
+
+inline int analogRead(int)
+{
+    return -1;
+}
+
+inline unsigned long millis()
+{
+    return 0;
+}
