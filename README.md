@@ -15,7 +15,6 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-0B6E6E?style=for-the-badge)](LICENSE)
 ![Platform: ESP32-C3](https://img.shields.io/badge/Platform-ESP32--C3-0F766E?style=for-the-badge)
 ![Framework: Arduino](https://img.shields.io/badge/Framework-Arduino-0EA5A5?style=for-the-badge)
-![MQTT Ready](https://img.shields.io/badge/MQTT-Ready-14532D?style=for-the-badge)
 ![OTA Enabled](https://img.shields.io/badge/OTA-Enabled-854D0E?style=for-the-badge)
 ![Local First](https://img.shields.io/badge/Local-First-1D4ED8?style=for-the-badge)
 ![Suggestions Welcome](https://img.shields.io/badge/Suggestions-Welcome-7C3AED?style=for-the-badge)
@@ -41,7 +40,7 @@ workshops, or small installations, this project is built for exactly that.
 
 ## Why It Exists
 
-- Local-first control that still plays nicely with MQTT and remote workflows.
+- Local-first HTTP control with Unified Server WebSockets for remote workflows.
 - Practical automation features instead of demo-only gimmicks.
 - Hardware-aware defaults for ESP32-C3 deployments.
 - A clean base for extending into your own automation platform.
@@ -73,38 +72,26 @@ Security should protect users, not trap them.
 ## Key Capabilities
 
 - Web control endpoints for direct relay interaction and runtime configuration.
-- MQTT command and telemetry integration for broker-driven automation.
 - OTA check/update paths for safer firmware rollout.
 - Time sync and schedule execution for repeatable behavior.
 - UDP discovery for quick device visibility on the network.
-- Native Matterbridge MQTT endpoint publishing, so each relay can be exposed as a Matter outlet without a separate adapter.
 
-## Matterbridge MQTT
+## Firmware builds and compatibility
 
-Install and enable the `matterbridge-mqtt` plugin, point it at the same MQTT
-broker as the relay, and set its base topic to `matterbridge` (or change
-`MATTERBRIDGE_MQTT_TOPIC` in `AppConfig.h` to match your configured base).
+PlatformIO is the build definition for every supported build:
 
-Once the relay connects, it automatically publishes retained Matterbridge
-metadata and state at:
+- `pio run -e esp32-c3-devkitm-1`: device firmware (also used by CI and release).
+- `pio test -e native`: host tests.
+- `node --test test/web/*.test.cjs`: embedded console regression tests.
+- `python3 -m unittest discover -s test/build_guard -v`: build and partition guards.
 
-```text
-matterbridge/esp-relay-<hostname>/config/root
-matterbridge/esp-relay-<hostname>/state/root
-matterbridge/esp-relay-<hostname>/subscribe/root
-```
+There is no separate supported ESP-IDF/CMake build. The obsolete generated stubs
+and unused vendored mDNS component have been removed. ESP32 Arduino's SDK mDNS
+responder still advertises `_http._tcp` and `_kj-esp._tcp` on port 80.
 
-Matterbridge controls it through `matterbridge/esp-relay-<hostname>/write/root`.
-The device is exposed as an `OnOffPlugInUnit`; commands are applied through the
-existing relay controller and its actual state is reported back to Matter.
-The configured hostname is the unique fleet identifier and Matter-visible name:
-for example, hostname `garage-pump` becomes Matterbridge device
-`esp-relay-garage-pump`. Give every deployed relay a unique hostname before
-pairing it with your Matter controller.
-
-Firmware upgraded from the previous MQTT layout clears its retained
-`home/<hostname>/...` records once, then uses only the `matterbridge/...` topic
-tree.
+The 4.2.0 development firmware removes MQTT/Matterbridge and disconnected LED
+controls. Direct HTTP control and Unified Server WebSocket communication remain.
+See [migration and measured storage](docs/FIRMWARE_CLEANUP.md) before upgrading.
 
 ## Ideal Use Cases
 
@@ -162,7 +149,7 @@ What should change?
 Why this matters in real usage.
 
 ## Environment
-Board, firmware version, network setup, and MQTT usage (if any).
+Board, firmware version, network setup, and Unified Server connectivity.
 ```
 
 ## Contact
@@ -176,8 +163,7 @@ Firmware 3.1.0 listens for the local Unified Server beacon on
 `239.255.42.99:42424` and opens one outbound WebSocket for registration,
 heartbeats, state, idempotent relay commands, and acknowledgements. `GET
 /unified/hello?server=http://192.168.0.50:8111` provides the server's reverse
-probe path. This connection never uses MQTT; the existing MQTT/Matterbridge and
-native HTTP interfaces remain available independently for compatibility.
+probe path. The native HTTP interface remains available independently for local control.
 
 Wi-Fi sleep and ESP light/deep sleep are disabled. The CPU runs at 80 MHz while
 the relay, button, discovery, WebSocket, HTTP, and OTA loops remain responsive.

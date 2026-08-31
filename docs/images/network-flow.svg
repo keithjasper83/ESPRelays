@@ -21,7 +21,7 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
     <text x="392" y="268" font-size="26" font-weight="700" fill="#052111">ESP32 Node</text>
 
     <rect x="680" y="80" width="230" height="100" rx="16" fill="#F59E0B"/>
-    <text x="730" y="137" font-size="24" font-weight="700" fill="#3A2202">MQTT</text>
+    <text x="730" y="137" font-size="24" font-weight="700" fill="#3A2202">WebSocket</text>
 
     <rect x="680" y="210" width="230" height="100" rx="16" fill="#A78BFA"/>
     <text x="732" y="268" font-size="24" font-weight="700" fill="#1F114F">OTA API</text>

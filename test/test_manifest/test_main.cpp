@@ -127,15 +127,14 @@ void test_relay_snapshot_preserves_absence_and_refreshes_state()
     s.hardwareId = "esp32-10003bba8d4c";
     s.legacyDeviceId = "esp32-water-10003bba8d4c";
     s.name = "water";
-    s.firmwareVersion = "4.1.0";
-    s.firmwareReleaseDate = "2026-08-16";
+    s.firmwareVersion = "4.2.0";
+    s.firmwareReleaseDate = "unreleased";
     s.temperatureC = 0; // cached value cannot make an absent probe available
     auto m = buildRelayManifest(s);
     auto roots = m.document["capabilities"].as<JsonArrayConst>();
     TEST_ASSERT_FALSE(findNode(roots, "temperature")["available"].as<bool>());
     TEST_ASSERT_TRUE(findNode(roots, "temperature")["state"].isNull());
-    TEST_ASSERT_FALSE(findNode(roots, "led-strip")["available"].as<bool>());
-    TEST_ASSERT_TRUE(findNode(roots, "led-strip")["commands"].isNull());
+    TEST_ASSERT_TRUE(findNode(roots, "led-strip").isNull());
     const std::string revision = m.document["manifest_revision"].as<std::string>();
     s.probePresent = true;
     s.monitoringEnabled = true;
@@ -260,6 +259,26 @@ void test_http_refreshes_snapshot_without_command_or_enrollment_access()
     TEST_ASSERT_EQUAL(503, server.status);
 }
 
+void test_retired_features_are_absent_without_rekeying_survivors()
+{
+    RelayManifestSnapshot snapshot;
+    snapshot.hardwareId = "esp32-10003bba8d4c";
+    snapshot.legacyDeviceId = "esp32-water-10003bba8d4c";
+    auto manifest = buildRelayManifest(snapshot);
+    auto &decoded = manifest.document;
+    TEST_ASSERT_EQUAL_STRING("relay-3", decoded["manifest_revision"].as<const char *>());
+    TEST_ASSERT_EQUAL_STRING("esp32-10003bba8d4c", decoded["hardware"]["id"].as<const char *>());
+    TEST_ASSERT_EQUAL_STRING("esp32-water-10003bba8d4c", decoded["legacy_device_id"].as<const char *>());
+    auto roots = decoded["capabilities"].as<JsonArrayConst>();
+    for (const char *key : {"indicators", "led-relay", "led-wifi", "led-strip", "mqtt-connected"})
+        TEST_ASSERT_TRUE_MESSAGE(findNode(roots, key).isNull(), key);
+    for (const char *key : {"relay", "temperature", "temperature-calibration", "relay-auto-off",
+                           "temperature-monitoring", "temperature-trim", "wifi-connected", "time-valid", "restart"})
+        TEST_ASSERT_FALSE_MESSAGE(findNode(roots, key).isNull(), key);
+    TEST_ASSERT_EQUAL_STRING("relay", roots[0]["children"][0]["key"].as<const char *>());
+    TEST_ASSERT_EQUAL_STRING("temperature-calibration", findNode(roots, "temperature")["children"][0]["key"].as<const char *>());
+}
+
 int main()
 {
     UNITY_BEGIN();
@@ -268,6 +287,7 @@ int main()
     RUN_TEST(test_enforces_tree_and_document_limits);
     RUN_TEST(test_factory_identity_ignores_hostname);
     RUN_TEST(test_mdns_advertises_contract_on_http_port);
+    RUN_TEST(test_retired_features_are_absent_without_rekeying_survivors);
     RUN_TEST(test_relay_snapshot_preserves_absence_and_refreshes_state);
     RUN_TEST(test_metadata_nesting_counts_containers_and_rejects_nonfinite);
     RUN_TEST(test_http_refreshes_snapshot_without_command_or_enrollment_access);

@@ -19,11 +19,9 @@
 #include "ButtonManager.h"
 #include "CommandRouter.h"
 #include "DeviceCommands.h"
-#include "MqttManager.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
 #include "ScheduleManager.h"
-#include "telemetry.h"
 #include "TimeSyncManager.h"
 #include "TemperatureProbeManager.h"
 #include "TemperatureCalibrationRecord.h"
@@ -36,7 +34,6 @@ bool debugLogging = false;
 
 RelayController relayController;
 WiFiManager wifiManager;
-MqttManager mqttManager;
 ButtonManager buttonManager;
 CommandRouter commandRouter;
 DeviceCommandContext commandContext;
@@ -46,7 +43,6 @@ TimeSyncManager timeSyncManager;
 ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
 TemperatureProbeManager temperatureProbeManager;
-Telemetry telemetry;
 UnifiedServerClient unifiedServerClient;
 
 unsigned long lastHeartbeat = 0;
@@ -60,59 +56,15 @@ bool lastDiscoveryWifiConnected = false;
 bool deviceHostnameNvsReady = false;
 bool otaAutoScheduleEnabled = true;
 bool otaAutoScheduleNvsReady = false;
-bool indicatorLedsStarted = false;
 
 namespace
 {
     constexpr char DEVICE_PREF_NAMESPACE[] = "device_cfg";
     constexpr char DEVICE_PREF_HOSTNAME[] = "hostname";
     constexpr char DEVICE_PREF_OTA_AUTO_SCHEDULE[] = "ota_auto_sched";
-    constexpr unsigned long LED_TEST_DURATION_MS = 5000;
     constexpr unsigned long SERIAL_IDLE_SUBMIT_MS = 1200;
     constexpr size_t SERIAL_MAX_COMMAND_LEN = 128;
 
-    bool parseOnOff(const String &payload, bool &on)
-    {
-        String normalized = payload;
-        normalized.trim();
-        normalized.toLowerCase();
-
-        if (normalized == "on" || normalized == "1" || normalized == "true")
-        {
-            on = true;
-            return true;
-        }
-
-        if (normalized == "off" || normalized == "0" || normalized == "false")
-        {
-            on = false;
-            return true;
-        }
-
-        return false;
-    }
-
-    bool parseUint8(const String &payload, uint8_t &value)
-    {
-        String normalized = payload;
-        normalized.trim();
-
-        char *endptr = nullptr;
-        long result = strtol(normalized.c_str(), &endptr, 10);
-
-        if (endptr == normalized.c_str() || *endptr != '\0')
-        {
-            return false;
-        }
-
-        if (result < 0 || result > 255)
-        {
-            return false;
-        }
-
-        value = static_cast<uint8_t>(result);
-        return true;
-    }
 }
 
 const DiscoveryEndpoint DISCOVERY_ENDPOINTS[] = {
@@ -126,7 +78,6 @@ const DiscoveryEndpoint DISCOVERY_ENDPOINTS[] = {
 
 void printStatus();
 String getDeviceHostname();
-String getMqttClientId();
 String getNvsHealth();
 void disableBluetooth();
 bool updateDeviceHostname(const String &requested, String &error);
@@ -163,30 +114,12 @@ int getHighCalibrationRaw();
 float getLowCalibrationTempC();
 float getHighCalibrationTempC();
 float getTemperatureTrimOffsetC();
-bool startRelayLedTest();
-bool startWifiLedTest();
-bool startAllLedTests();
-bool getRelayLedTestActive();
-bool getWifiLedTestActive();
-bool getLedActiveHigh();
-bool setLedActiveHigh(bool activeHigh, String &error);
 bool captureLowCalibration(float knownTempC, String &error);
 bool captureHighCalibration(float knownTempC, String &error);
 bool resetTemperatureCalibration(String &error);
 bool setTemperatureTrimOffsetC(float offsetC, String &error);
 bool captureTempLowFromSaved();
 bool captureTempHighFromSaved();
-void handleMqttOperation(const String &element, const String &operation, const String &payload);
-bool mqttSetLed1(bool on);
-bool mqttGetLed1();
-bool mqttSetLed2(bool on);
-bool mqttGetLed2();
-bool mqttGetRelay();
-String mqttGetDeviceName();
-uint8_t mqttGetLedStripMasterBrightness();
-void mqttSetLedStripMasterBrightness(uint8_t brightness);
-bool mqttGetLedStripBootAnimation();
-bool mqttSetLedStripBootAnimation(bool active);
 String getUnifiedRegistrationJson();
 String getUnifiedCalibrationJson();
 String getUnifiedStateJson();
@@ -248,10 +181,7 @@ void debugPrint(const char *msg)
 
 void onRelayStateChanged(bool state)
 {
-    mqttManager.publishRelayState(state);
     udpDiscovery.advertiseNow();
-    telemetry.setRelayState("relay0", state, "button");
-    telemetry.setControlState(CONTROL_STATE_ON, CONTROL_STATE_OFF, "manual", "button");
     unifiedServerClient.publishState();
 }
 
@@ -397,11 +327,6 @@ void printStatus()
         Serial.println(" dBm");
     }
 
-    Serial.print("MQTT: ");
-    Serial.print(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
-    Serial.print(" / ");
-    Serial.println(MqttManager::stateName(mqttManager.state()));
-
     Serial.print("Debug logging: ");
     Serial.println(debugLogging ? "ON" : "OFF");
 
@@ -440,10 +365,6 @@ long getRelayAutoOffRemainingSeconds()
 {
     return relayController.autoOffRemainingSeconds();
 }
-String getMqttClientId()
-{
-    return mqttManager.clientId();
-}
 
 String getNvsHealth()
 {
@@ -451,8 +372,6 @@ String getNvsHealth()
     health += deviceHostnameNvsReady ? "ok" : "default";
     health += ", wifi=";
     health += wifiManager.nvsReady() ? "ok" : "default";
-    health += ", mqtt=";
-    health += mqttManager.nvsReady() ? "ok" : "default";
     health += ", ota_sched=";
     health += otaAutoScheduleNvsReady ? "ok" : "default";
     return health;
@@ -520,7 +439,6 @@ bool updateDeviceHostname(const String &requested, String &error)
     deviceHostname = clean;
     saveDeviceHostname(deviceHostname);
     WiFi.setHostname(deviceHostname.c_str());
-    mqttManager.setClientId(deviceHostname);
 
     Serial.print("Hostname updated to: ");
     Serial.println(deviceHostname);
@@ -666,13 +584,7 @@ String getUnifiedManifestJson()
     snapshot.trimC = temperatureProbeManager.trimOffsetC();
     snapshot.relayPin = RELAY_PIN;
     snapshot.temperaturePin = TEMP_PROBE_ADC_PIN;
-    snapshot.relayLedPin = RELAY_LED_PIN;
-    snapshot.wifiLedPin = WIFI_LED_PIN;
-    snapshot.stripPin = LED_STRIP_PIN;
-    snapshot.stripCount = LED_STRIP_COUNT;
-    snapshot.discreteLedsEnabled = DISCRETE_STATUS_LEDS_ENABLED;
     snapshot.wifiConnected = wifiManager.isConnected();
-    snapshot.mqttConnected = mqttManager.isConnected();
     snapshot.timeValid = timeSyncManager.isTimeValid();
     snapshot.uptimeSeconds = (millis() - bootTime) / 1000;
     auto manifest = buildRelayManifest(snapshot);
@@ -883,123 +795,6 @@ void handleCommand(const String &cmd)
 
     Serial.println("Unknown command. Type 'help' to list commands.");
     commandRouter.printHelp(Serial);
-}
-
-void handleMqttOperation(const String &element, const String &operation, const String &payload)
-{
-    if (element == "relay" && operation == "set")
-    {
-        bool on = false;
-        if (parseOnOff(payload, on))
-        {
-            relayController.set(on);
-        }
-        return;
-    }
-
-    if (element == "relay" && (operation == "get" || operation == "state"))
-    {
-        mqttManager.publishRelayState(relayController.isOn());
-        return;
-    }
-
-    if (element == "led_strip")
-    {
-        // IndicatorLeds component removed - led_strip operations no longer supported
-        return;
-    }
-}
-
-// IndicatorLeds component removed - LED control functions no longer supported
-bool mqttSetLed1(bool on)
-{
-    (void)on;
-    return false;
-}
-
-bool mqttGetLed1()
-{
-    return false;
-}
-
-bool mqttSetLed2(bool on)
-{
-    (void)on;
-    return false;
-}
-
-bool mqttGetLed2()
-{
-    return false;
-}
-
-bool mqttGetRelay()
-{
-    return relayController.isOn();
-}
-
-String mqttGetDeviceName()
-{
-    return deviceHostname;
-}
-
-// IndicatorLeds component removed - LED strip functions no longer supported
-uint8_t mqttGetLedStripMasterBrightness()
-{
-    return 0;
-}
-
-void mqttSetLedStripMasterBrightness(uint8_t brightness)
-{
-    (void)brightness;
-}
-
-bool mqttGetLedStripBootAnimation()
-{
-    return false;
-}
-
-bool mqttSetLedStripBootAnimation(bool active)
-{
-    (void)active;
-    return false;
-}
-
-bool startRelayLedTest()
-{
-    return false;
-}
-
-bool startWifiLedTest()
-{
-    return false;
-}
-
-bool startAllLedTests()
-{
-    return false;
-}
-
-bool getRelayLedTestActive()
-{
-    return false;
-}
-
-bool getWifiLedTestActive()
-{
-    return false;
-}
-
-bool getLedActiveHigh()
-{
-    return false;
-}
-
-bool setLedActiveHigh(bool activeHigh, String &error)
-{
-    (void)activeHigh;
-    (void)error;
-    return false;
 }
 
 void handleSerial()
@@ -1219,8 +1014,7 @@ void heartbeat()
     Serial.print("(");
     Serial.print(wifiManager.status());
     Serial.print(")");
-    Serial.print(" | MQTT=");
-    Serial.println(mqttManager.isConnected() ? "OK" : "NO");
+    Serial.println();
 }
 
 void printTimestampLine()
@@ -1272,8 +1066,7 @@ void printTimestampLine()
     Serial.print(relayController.isOn() ? "ON" : "OFF");
     Serial.print(" | wifi=");
     Serial.print(WiFiManager::statusName(wifiManager.status()));
-    Serial.print(" | mqtt=");
-    Serial.println(mqttManager.isConnected() ? "CONNECTED" : "DISCONNECTED");
+    Serial.println();
 }
 
 void applyWeeklyOtaUpdateSchedule()
@@ -1338,13 +1131,12 @@ void setup()
     bootTime = millis();
 
     Serial.println();
-    Serial.println("ESP32-C3 RELAY WIFI MQTT");
+    Serial.println("ESP32-C3 RELAY WIFI");
     Serial.print("Firmware version: ");
     Serial.println(FIRMWARE_VERSION);
     Serial.print("Debug logging: ");
     Serial.println(debugLogging ? "ON" : "OFF");
     Serial.println("Type 'help' for available commands.");
-    Serial.println("Relay LED follows relay state. Wi-Fi LED stays on when disconnected and blinks every five seconds when connected.");
 
     loadDeviceHostname();
     disableBluetooth();
@@ -1356,23 +1148,6 @@ void setup()
 
     relayController.begin();
     relayController.setStateChangedCallback(onRelayStateChanged);
-
-    TelemetryDevice deviceInfo = {
-        .id = DEVICE_HOSTNAME_DEFAULT,
-        .name = DEVICE_NAME_DEFAULT,
-        .location = "",
-        .function = DEVICE_TYPE_DEFAULT,
-        .project = "ESPRelays",
-        .firmwareVersion = FIRMWARE_VERSION,
-        .type = DEVICE_TYPE_DEFAULT,
-        .fwVersion = FIRMWARE_VERSION,
-        .hwVersion = FIRMWARE_VERSION
-    };
-
-    telemetry.begin(deviceInfo);
-    telemetry.setMqttClient(mqttManager.client());
-    telemetry.addRelay(0);
-    telemetry.addTemperatureProbe(0);
 
     commandContext.relay = &relayController;
     commandContext.wifi = &wifiManager;
@@ -1387,14 +1162,12 @@ void setup()
     webContext.router = &commandRouter;
     webContext.relay = &relayController;
     webContext.wifi = &wifiManager;
-    webContext.mqtt = &mqttManager;
     webContext.timeSync = &timeSyncManager;
     webContext.schedule = &scheduleManager;
     webContext.ota = &otaUpdateManager;
     webContext.getHostname = getDeviceHostname;
     webContext.getManifest = getUnifiedManifestJson;
     webContext.setHostname = updateDeviceHostname;
-    webContext.getMqttClientId = getMqttClientId;
     webContext.getNvsHealth = getNvsHealth;
     webContext.getOtaAutoScheduleEnabled = getOtaAutoScheduleEnabled;
     webContext.setOtaAutoScheduleEnabled = setOtaAutoScheduleEnabled;
@@ -1420,13 +1193,6 @@ void setup()
     webContext.captureHighCalibration = captureHighCalibration;
     webContext.resetTemperatureCalibration = resetTemperatureCalibration;
     webContext.setTemperatureTrimOffsetC = setTemperatureTrimOffsetC;
-    webContext.startRelayLedTest = startRelayLedTest;
-    webContext.startWifiLedTest = startWifiLedTest;
-    webContext.startAllLedTests = startAllLedTests;
-    webContext.getRelayLedTestActive = getRelayLedTestActive;
-    webContext.getWifiLedTestActive = getWifiLedTestActive;
-    webContext.getLedActiveHigh = getLedActiveHigh;
-    webContext.setLedActiveHigh = setLedActiveHigh;
     webContext.setUnifiedServer = configureUnifiedServer;
     webControlServer.configure(webContext);
 
@@ -1437,12 +1203,6 @@ void setup()
 
     WiFi.setHostname(deviceHostname.c_str());
     wifiManager.begin();
-
-    mqttManager.begin();
-    mqttManager.setClientId(deviceHostname);
-    mqttManager.setOperationHandler(handleMqttOperation);
-    mqttManager.setElementHandlers(mqttGetRelay, mqttSetLed1, mqttGetLed1, mqttSetLed2, mqttGetLed2, mqttGetDeviceName);
-    mqttManager.setTemperatureTelemetryGetters(getTemperatureProbePresent, getTemperatureProbeRaw, getCurrentTemperatureRaw, getCurrentTemperatureC);
 
     timeSyncManager.begin();
     scheduleManager.begin();
@@ -1487,7 +1247,6 @@ void loop()
     maintainMdns();
     webControlServer.beginIfNeeded(wifiManager.isConnected());
     webControlServer.handleClient();
-    mqttManager.maintain(wifiManager.isConnected(), relayController.isOn());
     temperatureProbeManager.maintain(millis());
     udpDiscovery.loop(wifiManager.isConnected());
     unifiedServerClient.maintain(wifiManager.isConnected());
@@ -1495,7 +1254,6 @@ void loop()
     {
         ESP.restart();
     }
-    telemetry.loop();
 
     if (wifiManager.isConnected() && !lastDiscoveryWifiConnected)
     {

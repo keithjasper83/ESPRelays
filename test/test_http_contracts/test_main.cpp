@@ -75,9 +75,6 @@ void test_config_handler_reads_form_fields()
 
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"wifi_ssid\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"wifi_pass\")"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_host\")"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_port\")"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"mqtt_enabled\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"relay_auto_off_minutes\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"hostname\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("gServer.arg(\"temp_c\")"));

@@ -14,8 +14,6 @@
 
 #include "AppConfig.h"
 #include "CommandRouter.h"
-#include "IndicatorLeds.h"
-#include "MqttManager.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
 #include "ScheduleManager.h"
@@ -126,21 +124,6 @@ namespace
     json += "\"mdns_host\":\"";
     json += jsonEscape((context.getHostname != nullptr ? context.getHostname() : String(DEVICE_HOSTNAME_DEFAULT)) + String(".local"));
     json += "\",";
-    json += "\"mqtt_host\":\"";
-    json += jsonEscape(context.mqtt != nullptr ? context.mqtt->serverHost() : String(MQTT_HOST));
-    json += "\",";
-    json += "\"mqtt_port\":";
-    json += context.mqtt != nullptr ? context.mqtt->serverPort() : MQTT_PORT;
-    json += ",";
-    json += "\"mqtt_enabled\":";
-    json += context.mqtt != nullptr ? (context.mqtt->isEnabled() ? "true" : "false") : "true";
-    json += ",";
-    json += "\"mqtt_username\":\"";
-    json += jsonEscape(context.mqtt != nullptr ? context.mqtt->username() : String(MQTT_USER));
-    json += "\",";
-    json += "\"mqtt_password_set\":";
-    json += context.mqtt != nullptr ? (context.mqtt->passwordSet() ? "true" : "false") : (String(MQTT_PASS).length() > 0 ? "true" : "false");
-    json += ",";
     json += "\"time_enabled\":";
     json += context.timeSync != nullptr ? (context.timeSync->isEnabled() ? "true" : "false") : "true";
     json += ",";
@@ -188,12 +171,6 @@ namespace
     json += ",";
     json += "\"relay_pin\":";
     json += RELAY_PIN;
-    json += ",";
-    json += "\"relay_led_pin\":";
-    json += RELAY_LED_PIN;
-    json += ",";
-    json += "\"wifi_led_pin\":";
-    json += WIFI_LED_PIN;
     json += ",";
     json += "\"relay_button_pin\":";
     json += RELAY_BUTTON_PIN;
@@ -260,54 +237,6 @@ namespace
 json += "\"nvs_health\":\"";
 json += jsonEscape(context.getNvsHealth != nullptr ? context.getNvsHealth() : String("nvs health unavailable"));
 json += "\"";
-json += ",\"led_strip_enabled\":";
-json += (LED_STRIP_PIN > 0) ? "true" : "false";
-json += ",\"led_strip_count\":";
-json += LED_STRIP_COUNT;
-json += ",\"led_strip_master_brightness\":";
-if (context.indicatorLeds != nullptr)
-{
-  json += context.indicatorLeds->getMasterBrightness();
-}
-else
-{
-  json += LED_STRIP_MASTER_BRIGHTNESS_DEFAULT;
-}
-json += ",\"led_strip_hard_limit\":";
-json += LED_STRIP_HARD_LIMIT_BRIGHTNESS;
-json += ",\"led_strip_boot_animation\":";
-if (context.indicatorLeds != nullptr)
-{
-  json += context.indicatorLeds->isBootAnimationActive() ? "true" : "false";
-}
-else
-{
-  json += LED_STRIP_BOOT_ANIMATION_DEFAULT;
-}
-json += ",\"led_strip_led_brightness\":[";
-if (context.indicatorLeds != nullptr)
-{
-  for (uint8_t i = 0; i < LED_STRIP_COUNT; i++)
-  {
-    json += context.indicatorLeds->getPerLedBrightness(i);
-    if (i < LED_STRIP_COUNT - 1)
-    {
-      json += ",";
-    }
-  }
-}
-else
-{
-  for (uint8_t i = 0; i < LED_STRIP_COUNT; i++)
-  {
-    json += LED_STRIP_MASTER_BRIGHTNESS_DEFAULT;
-    if (i < LED_STRIP_COUNT - 1)
-    {
-      json += ",";
-    }
-  }
-}
-json += "]";
 json += "}";
 return json;
   }
@@ -358,20 +287,6 @@ return json;
     json += ",\"temp_c\":";
     json += isnan(highTempC) ? "null" : String(highTempC, 2);
     json += "}}";
-    return json;
-  }
-
-  String buildLedTestJson(const WebControlContext &context, const char *command, const char *message)
-  {
-    String json = "{\"ok\":true,\"command\":\"";
-    json += command;
-    json += "\",\"message\":\"";
-    json += message;
-    json += "\",\"relay_led_test_active\":";
-    json += context.getRelayLedTestActive != nullptr ? (context.getRelayLedTestActive() ? "true" : "false") : "false";
-    json += ",\"wifi_led_test_active\":";
-    json += context.getWifiLedTestActive != nullptr ? (context.getWifiLedTestActive() ? "true" : "false") : "false";
-    json += "}";
     return json;
   }
 
@@ -801,18 +716,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
         <button id="btnToggle" class="toggle">TOGGLE</button>
         <button id="btnRefresh" class="refresh">REFRESH STATUS</button>
       </div>
-      <div class="stackSection">
-        <div class="sectionTitle">LED Test Controls</div>
-        <p class="muted">Runs the selected LED test for 5 seconds, then returns control to normal firmware behavior.</p>
-        <div class="grid">
-          <button id="btnRelayLedTest" class="refresh">TEST RELAY LED</button>
-          <button id="btnWifiLedTest" class="refresh">TEST WI-FI LED</button>
-          <button id="btnAllLedTests" class="toggle">TEST BOTH LEDS</button>
-          <button id="btnLedBootAnimation" class="refresh">BOOT ANIMATION</button>
-        </div>
-        <div class="kv" style="margin-top:10px"><strong>Relay LED test active:</strong> <span id="relayLedTestActive">no</span></div>
-        <div class="kv"><strong>Wi-Fi LED test active:</strong> <span id="wifiLedTestActive">no</span></div>
-      </div>
+
       <div class="settingsGroup stackSection">
         <div class="settingsRow">
           <div class="settingsLabel">
@@ -823,51 +727,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
             <input id="hostnameInput" type="text" placeholder="homerelay" maxlength="32" />
           </div>
         </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>MQTT Host</span>
-            <small>Broker address or hostname.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="mqttHostInput" type="text" placeholder="192.168.0.50" />
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>MQTT Port</span>
-            <small>Defaults to 1883 if empty.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="mqttPortInput" type="text" placeholder="1883" inputmode="numeric" />
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>MQTT Username</span>
-            <small>Leave empty for anonymous broker access.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="mqttUsernameInput" type="text" placeholder="mqtt-user" />
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>MQTT Password</span>
-            <small>Leave empty to keep current password.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="mqttPasswordInput" type="password" placeholder="stored password" />
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>Disable MQTT</span>
-            <small>Stops all MQTT connect, subscribe, and publish activity.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="mqttDisabledInput" type="checkbox" />
-          </div>
-        </div>
+
         <div class="settingsRow">
           <div class="settingsLabel">
             <span>Disable Weekly OTA Auto-Update</span>
@@ -886,74 +746,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
             <input id="relayAutoOffMinutesInput" type="text" placeholder="60" inputmode="numeric" />
           </div>
         </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>LED Active-High Wiring</span>
-            <small>Enable if LED turns on with GPIO HIGH. Disable for active-low sink wiring.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="ledActiveHighInput" type="checkbox" />
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>LED Strip Master Brightness</span>
-            <small>Global brightness for all LEDs (0-<span id="ledStripHardLimit">204</span>). Max value is hard-limited for safety.</small>
-          </div>
-          <div class="settingsValue">
-            <input id="ledStripMasterBrightnessInput" type="number" min="0" max="204" value="128" />
-            <span id="ledStripMasterBrightness">128</span>
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>Per-LED Brightness (0-<span id="ledStripHardLimit">204</span>)</span>
-            <small>Individual brightness for each LED. Combined with master brightness with hard limit applied.</small>
-          </div>
-          <div class="settingsValue">
-            <div id="ledStripLedBrightnessArray" class="kv" style="margin-top:5px">128, 128, 128, 128, 128</div>
-            <div id="ledStripLedBrightnessInputs" style="margin-top:5px">
-              <span>LED 0: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
-              <span>LED 1: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
-              <span>LED 2: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
-              <span>LED 3: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
-              <span>LED 4: </span><input type="number" min="0" max="204" value="128" style="width:50px" />
-            </div>
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>LED Strip Boot Animation</span>
-            <small>Progressive fill animation on boot (2s). Tap to start/stop.</small>
-          </div>
-          <div class="settingsValue">
-            <span id="ledStripBootAnimation">inactive</span>
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>LED Strip Status</span>
-            <small>LED 0=Health, LED 1=Network, LED 2=Controller, LED 3=Relay Activity, LED 4=Activity/Attention</small>
-          </div>
-          <div class="settingsValue">
-            <div id="ledStripStatus" class="kv" style="margin-top:5px">
-              <span>LED 0 (Health): </span><span id="ledStatus0">Off</span>
-              <span>LED 1 (Network): </span><span id="ledStatus1">Off</span>
-              <span>LED 2 (Controller): </span><span id="ledStatus2">Off</span>
-              <span>LED 3 (Relay): </span><span id="ledStatus3">Off</span>
-              <span>LED 4 (Activity): </span><span id="ledStatus4">Off</span>
-            </div>
-          </div>
-        </div>
-        <div class="settingsRow">
-          <div class="settingsLabel">
-            <span>LED Strip Info</span>
-            <small>5-pixel WS2812B on GPIO 8. Hard brightness limit: 204 (80% of 255) for safety.</small>
-          </div>
-          <div class="settingsValue">
-            <span id="ledStripCount">5</span> LEDs | GPIO 8 | Max brightness: <span id="ledStripHardLimit">204</span>
-          </div>
-        </div>
+
         <div class="settingsRow">
           <div class="settingsLabel">
             <span>Wi-Fi SSID</span>
@@ -985,19 +778,13 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       <div class="kv"><strong>Type:</strong> <span id="deviceType">n/a</span></div>
       <div class="kv"><strong>Firmware:</strong> <span id="firmware">n/a</span></div>
       <div class="kv"><strong>mDNS host:</strong> <span id="mdnsHost">n/a</span></div>
-      <div class="kv"><strong>MQTT Host:</strong> <span id="mqttHost">n/a</span></div>
-      <div class="kv"><strong>MQTT Port:</strong> <span id="mqttPort">n/a</span></div>
-      <div class="kv"><strong>MQTT Enabled:</strong> <span id="mqttEnabled">n/a</span></div>
-      <div class="kv"><strong>MQTT Username:</strong> <span id="mqttUsername">n/a</span></div>
-      <div class="kv"><strong>MQTT Password Set:</strong> <span id="mqttPasswordSet">n/a</span></div>
+
       <div class="kv"><strong>Relay Auto-Off Minutes:</strong> <span id="relayAutoOffMinutes">n/a</span></div>
       <div class="kv"><strong>Relay Auto-Off Armed:</strong> <span id="relayAutoOffArmed">n/a</span></div>
       <div class="kv"><strong>Relay Auto-Off Remaining:</strong> <span id="relayAutoOffRemaining">n/a</span></div>
       <div class="kv"><strong>OTA Configured:</strong> <span id="otaConfigured">n/a</span></div>
       <div class="kv"><strong>Relay pin:</strong> <span id="relayPin">n/a</span></div>
-      <div class="kv"><strong>Relay LED pin:</strong> <span id="relayLedPin">n/a</span></div>
-      <div class="kv"><strong>Wi-Fi LED pin:</strong> <span id="wifiLedPin">n/a</span></div>
-      <div class="kv"><strong>LED Active-High:</strong> <span id="ledActiveHigh">n/a</span></div>
+
       <div class="kv"><strong>Relay button pin:</strong> <span id="relayButtonPin">n/a</span></div>
       <div class="kv"><strong>Reset button pin:</strong> <span id="resetButtonPin">n/a</span></div>
       <div class="kv"><strong>Temp probe ADC pin:</strong> <span id="tempProbeAdcPin">n/a</span></div>
@@ -1203,7 +990,7 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       <div class="kv"><strong>Last command:</strong> <span id="last">none</span></div>
       <div class="kv"><strong>Uptime:</strong> <span id="uptime">n/a</span></div>
       <div class="kv"><strong>Hostname:</strong> <span id="hostname">n/a</span></div>
-      <div class="kv"><strong>MQTT Client ID:</strong> <span id="mqttClientId">n/a</span></div>
+
       <div class="kv"><strong>Auto-Off Remaining (s):</strong> <span id="statusRelayAutoOffRemaining">n/a</span></div>
       <div class="kv"><strong>Probe present:</strong> <span id="statusTempProbePresent">n/a</span></div>
       <div class="kv"><strong>Probe raw:</strong> <span id="statusTempProbeRaw">n/a</span></div>
@@ -1224,21 +1011,12 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       last: document.getElementById('last'),
       uptime: document.getElementById('uptime'),
       hostname: document.getElementById('hostname'),
-      mqttClientId: document.getElementById('mqttClientId'),
       error: document.getElementById('error'),
       relayStateLabel: document.getElementById('relayStateLabel'),
       relayStateBadge: document.getElementById('relayStateBadge'),
       relayStateBadgeText: document.getElementById('relayStateBadgeText'),
-      mqttHostInput: document.getElementById('mqttHostInput'),
-      mqttPortInput: document.getElementById('mqttPortInput'),
-      mqttUsernameInput: document.getElementById('mqttUsernameInput'),
-      mqttPasswordInput: document.getElementById('mqttPasswordInput'),
-      mqttDisabledInput: document.getElementById('mqttDisabledInput'),
       otaAutoScheduleDisabledInput: document.getElementById('otaAutoScheduleDisabledInput'),
       relayAutoOffMinutesInput: document.getElementById('relayAutoOffMinutesInput'),
-      ledActiveHighInput: document.getElementById('ledActiveHighInput'),
-      relayLedTestActive: document.getElementById('relayLedTestActive'),
-      wifiLedTestActive: document.getElementById('wifiLedTestActive'),
       timeEnabledInput: document.getElementById('timeEnabledInput'),
       timeServerInput: document.getElementById('timeServerInput'),
       timeTimezoneInput: document.getElementById('timeTimezoneInput'),
@@ -1262,11 +1040,6 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       firmware: document.getElementById('firmware'),
       mdnsHost: document.getElementById('mdnsHost'),
       mdnsHostInline: document.getElementById('mdnsHostInline'),
-      mqttHost: document.getElementById('mqttHost'),
-      mqttPort: document.getElementById('mqttPort'),
-      mqttEnabled: document.getElementById('mqttEnabled'),
-      mqttUsername: document.getElementById('mqttUsername'),
-      mqttPasswordSet: document.getElementById('mqttPasswordSet'),
       relayAutoOffMinutes: document.getElementById('relayAutoOffMinutes'),
       relayAutoOffArmed: document.getElementById('relayAutoOffArmed'),
       relayAutoOffRemaining: document.getElementById('relayAutoOffRemaining'),
@@ -1288,9 +1061,6 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       tempCalLowPoint: document.getElementById('tempCalLowPoint'),
       tempCalHighPoint: document.getElementById('tempCalHighPoint'),
       relayPin: document.getElementById('relayPin'),
-      relayLedPin: document.getElementById('relayLedPin'),
-      wifiLedPin: document.getElementById('wifiLedPin'),
-      ledActiveHigh: document.getElementById('ledActiveHigh'),
       relayButtonPin: document.getElementById('relayButtonPin'),
       resetButtonPin: document.getElementById('resetButtonPin'),
       tempProbeAdcPin: document.getElementById('tempProbeAdcPin'),
@@ -1311,10 +1081,6 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
         document.getElementById('btnOff'),
         document.getElementById('btnToggle'),
         document.getElementById('btnRefresh'),
-        document.getElementById('btnRelayLedTest'),
-        document.getElementById('btnWifiLedTest'),
-        document.getElementById('btnAllLedTests'),
-        document.getElementById('btnLedBootAnimation'),
         document.getElementById('btnSaveConfig'),
         document.getElementById('btnScanWifi'),
         document.getElementById('btnSaveTimeConfig'),
@@ -1331,15 +1097,11 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
         document.getElementById('btnTempTrimPlus02'),
         document.getElementById('btnTempTrimPlus1'),
         document.getElementById('btnTempTrimReset'),
-        document.getElementById('btnLedBootAnimation')
       ]
     };
 
-    let currentMqttEnabled = true;
-    let currentMqttUsername = '';
     let currentOtaAutoScheduleEnabled = true;
     let currentRelayAutoOffMinutes = 0;
-    let currentLedActiveHigh = true;
     let timeState = { enabled: true, events: [], count: 0, capacity: 10 };
 
     function setBusy(busy) {
@@ -1368,79 +1130,6 @@ document.querySelector('#on').onclick=()=>command('/on');document.querySelector(
       }
     }
 
-    function showLedTestStatus(obj) {
-      if (typeof obj.relay_led_test_active !== 'undefined') {
-        ids.relayLedTestActive.textContent = obj.relay_led_test_active ? 'yes' : 'no';
-      }
-      if (typeof obj.wifi_led_test_active !== 'undefined') {
-        ids.wifiLedTestActive.textContent = obj.wifi_led_test_active ? 'yes' : 'no';
-      }
-    }
-
-function updateMasterBrightness(brightness) {
-      const brightnessNum = parseInt(brightness);
-      if (isNaN(brightnessNum) || brightnessNum < 0 || brightnessNum > LED_STRIP_HARD_LIMIT_BRIGHTNESS) {
-        alert('Brightness must be between 0 and ' + LED_STRIP_HARD_LIMIT_BRIGHTNESS);
-        return;
-      }
-      fetch('/led/brightness', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brightness: brightnessNum })
-      }).then(res => res.json()).then(data => {
-        if (data.ok) {
-          ids.ledStripMasterBrightness.textContent = data.master_brightness;
-          ids.ledStripMasterBrightnessInput.value = data.master_brightness;
-        } else {
-          alert(data.error || 'Failed to set brightness');
-        }
-      });
-    }
-
-function updatePerLedBrightness(e) {
-      const inputs = document.querySelectorAll('#ledStripLedBrightnessInputs input');
-      const brightnessArray = [];
-      for (let i = 0; i < inputs.length; i++) {
-        const val = parseInt(inputs[i].value);
-        if (isNaN(val) || val < 0 || val > LED_STRIP_HARD_LIMIT_BRIGHTNESS) {
-          alert('Brightness must be between 0 and ' + LED_STRIP_HARD_LIMIT_BRIGHTNESS);
-          return;
-        }
-        brightnessArray.push(val);
-      }
-      
-      // Update each LED brightness
-      for (let i = 0; i < brightnessArray.length; i++) {
-        fetch('/led/strip/brightness', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ index: i, brightness: brightnessArray[i] })
-        }).then(res => res.json()).then(data => {
-          if (!data.ok) {
-            alert(data.error || 'Failed to set LED brightness');
-          }
-        });
-      }
-      
-      // Update display
-      ids.ledStripLedBrightnessArray.textContent = brightnessArray.join(', ');
-    }
-
-function runLedBootAnimation() {
-      fetch('/led/boot-animation', { method: 'POST' })
-      .then(res => res.json())
-      .then(data => {
-        if (data.ok) {
-          document.getElementById('ledStripBootAnimation').textContent = data.command === 'led_boot_animation' ? 'active' : 'inactive';
-          if (data.message) {
-            alert(data.message);
-          }
-        } else {
-          alert(data.error || 'Failed to run boot animation');
-        }
-      });
-    }
-
     function showJson(obj) {
       ids.raw.textContent = JSON.stringify(obj, null, 2);
       if (obj.relay) {
@@ -1452,7 +1141,6 @@ function runLedBootAnimation() {
         ids.hostname.textContent = obj.hostname;
       }
       if (obj.firmware_version) ids.firmwareVersion.textContent = obj.firmware_version;
-      if (obj.mqtt_client_id) ids.mqttClientId.textContent = obj.mqtt_client_id;
       if (typeof obj.relay_auto_off_remaining_s !== 'undefined') {
         const remaining = Number(obj.relay_auto_off_remaining_s);
         ids.statusRelayAutoOffRemaining.textContent = Number.isFinite(remaining) ? String(Math.max(0, Math.floor(remaining))) : 'n/a';
@@ -1490,12 +1178,6 @@ function runLedBootAnimation() {
         const trim = Number(obj.temperature_trim_offset_c);
         ids.tempCalTrimOffset.textContent = Number.isFinite(trim) ? `${trim.toFixed(2)} C` : '0.00 C';
       }
-      if (typeof obj.led_active_high !== 'undefined') {
-        const activeHigh = !!obj.led_active_high;
-        ids.ledActiveHigh.textContent = activeHigh ? 'yes' : 'no';
-        ids.ledActiveHighInput.checked = activeHigh;
-      }
-      showLedTestStatus(obj);
       if (obj.command) ids.last.textContent = obj.command;
       ids.error.textContent = obj.ok ? 'none' : (obj.error || 'request failed');
     }
@@ -1512,25 +1194,6 @@ function runLedBootAnimation() {
       if (obj.firmware) ids.firmware.textContent = obj.firmware.name + ' ' + obj.firmware.version + (obj.firmware.release_date ? ` · ${obj.firmware.release_date}` : '');
       if (obj.mdns_host) ids.mdnsHost.textContent = obj.mdns_host;
       if (obj.mdns_host) ids.mdnsHostInline.textContent = obj.mdns_host;
-      if (obj.mqtt_host) ids.mqttHost.textContent = obj.mqtt_host;
-      if (typeof obj.mqtt_port !== 'undefined') ids.mqttPort.textContent = obj.mqtt_port;
-      if (obj.mqtt_host) ids.mqttHostInput.value = obj.mqtt_host;
-      if (typeof obj.mqtt_port !== 'undefined') ids.mqttPortInput.value = obj.mqtt_port;
-      if (typeof obj.mqtt_username !== 'undefined') {
-        currentMqttUsername = (obj.mqtt_username || '').toString();
-        ids.mqttUsernameInput.value = currentMqttUsername;
-        ids.mqttUsername.textContent = currentMqttUsername.length > 0 ? currentMqttUsername : 'none';
-      }
-      if (typeof obj.mqtt_password_set !== 'undefined') {
-        ids.mqttPasswordSet.textContent = obj.mqtt_password_set ? 'yes' : 'no';
-        ids.mqttPasswordInput.placeholder = obj.mqtt_password_set ? 'stored password' : 'new password';
-        ids.mqttPasswordInput.value = '';
-      }
-      if (typeof obj.mqtt_enabled !== 'undefined') {
-        currentMqttEnabled = !!obj.mqtt_enabled;
-        ids.mqttDisabledInput.checked = !currentMqttEnabled;
-        ids.mqttEnabled.textContent = currentMqttEnabled ? 'yes' : 'no';
-      }
       if (typeof obj.relay_auto_off_minutes !== 'undefined') {
         const minutes = Number(obj.relay_auto_off_minutes);
         currentRelayAutoOffMinutes = Number.isFinite(minutes) ? Math.max(0, Math.floor(minutes)) : 0;
@@ -1544,49 +1207,6 @@ function runLedBootAnimation() {
         const remaining = Number(obj.relay_auto_off_remaining_s);
         ids.relayAutoOffRemaining.textContent = Number.isFinite(remaining) ? `${Math.max(0, Math.floor(remaining))} s` : 'n/a';
       }
-      if (typeof obj.led_active_high !== 'undefined') {
-        currentLedActiveHigh = !!obj.led_active_high;
-        ids.ledActiveHighInput.checked = currentLedActiveHigh;
-        ids.ledActiveHigh.textContent = currentLedActiveHigh ? 'yes' : 'no';
-      }
-      if (typeof obj.led_strip_enabled !== 'undefined') {
-        ids.ledStripEnabled.textContent = obj.led_strip_enabled ? 'yes' : 'no';
-      }
-      if (typeof obj.led_strip_count !== 'undefined') {
-        ids.ledStripCount.textContent = obj.led_strip_count;
-      }
-      if (typeof obj.led_strip_master_brightness !== 'undefined') {
-        ids.ledStripMasterBrightness.textContent = obj.led_strip_master_brightness;
-        ids.ledStripMasterBrightnessInput.value = obj.led_strip_master_brightness;
-      }
-      if (typeof obj.led_strip_hard_limit !== 'undefined') {
-        ids.ledStripHardLimit.textContent = obj.led_strip_hard_limit;
-      }
-      if (typeof obj.led_strip_boot_animation !== 'undefined') {
-        ids.ledStripBootAnimation.textContent = obj.led_strip_boot_animation ? 'active' : 'inactive';
-      }
-      if (typeof obj.led_strip_led_brightness !== 'undefined' && Array.isArray(obj.led_strip_led_brightness)) {
-        const brightnessArray = obj.led_strip_led_brightness;
-        ids.ledStripLedBrightnessArray.textContent = brightnessArray.join(', ');
-        for (let i = 0; i < brightnessArray.length; i++) {
-          if (ids.ledStripLedBrightnessInputs[i]) {
-            ids.ledStripLedBrightnessInputs[i].value = brightnessArray[i];
-          }
-        }
-      }
-      if (typeof obj.led_status !== 'undefined' && Array.isArray(obj.led_status)) {
-        const statusArray = obj.led_status;
-        const statusText = { 0: 'Off', 1: 'Connecting', 2: 'Configured', 3: 'Active', 4: 'Pulse' };
-        for (let i = 0; i < statusArray.length; i++) {
-          const statusNum = statusArray[i];
-          const statusTextVal = statusText[statusNum] || 'Off';
-          const statusElement = document.getElementById('ledStatus' + i);
-          if (statusElement) {
-            statusElement.textContent = statusTextVal;
-          }
-        }
-      }
-      showLedTestStatus(obj);
       if (typeof obj.ota_configured !== 'undefined') {
         ids.otaConfigured.textContent = obj.ota_configured ? 'yes' : 'no';
       }
@@ -1600,8 +1220,6 @@ function runLedBootAnimation() {
       if (obj.wifi_ssid) ids.wifiSsidInput.value = obj.wifi_ssid;
       ids.wifiPassInput.placeholder = obj.wifi_password_set ? 'stored password' : 'new password';
       if (typeof obj.relay_pin !== 'undefined') ids.relayPin.textContent = obj.relay_pin;
-      if (typeof obj.relay_led_pin !== 'undefined') ids.relayLedPin.textContent = obj.relay_led_pin;
-      if (typeof obj.wifi_led_pin !== 'undefined') ids.wifiLedPin.textContent = obj.wifi_led_pin;
       if (typeof obj.relay_button_pin !== 'undefined') ids.relayButtonPin.textContent = obj.relay_button_pin;
       if (typeof obj.reset_button_pin !== 'undefined') ids.resetButtonPin.textContent = obj.reset_button_pin;
       if (typeof obj.temp_probe_adc_pin !== 'undefined') ids.tempProbeAdcPin.textContent = obj.temp_probe_adc_pin;
@@ -1948,19 +1566,6 @@ function runLedBootAnimation() {
       }
     }
 
-    async function runLedTest(path, commandName) {
-      setBusy(true);
-      try {
-        const data = await parseResponse(await fetch(path, { method: 'POST' }));
-        showJson(data);
-        ids.last.textContent = commandName;
-      } catch (err) {
-        showJson({ ok: false, error: err.error || 'LED test request failed' });
-      } finally {
-        setBusy(false);
-      }
-    }
-
     async function scanWifi() {
       setBusy(true);
       try {
@@ -1976,25 +1581,16 @@ function runLedBootAnimation() {
 
     async function applyConfig() {
       const hostname = ids.hostnameInput.value.trim();
-      const mqttHost = ids.mqttHostInput.value.trim();
-      const mqttPort = ids.mqttPortInput.value.trim();
-      const mqttUsername = ids.mqttUsernameInput.value.trim();
-      const mqttPassword = ids.mqttPasswordInput.value;
       const relayAutoOffText = ids.relayAutoOffMinutesInput.value.trim();
       const relayAutoOffParsed = relayAutoOffText.length > 0 ? Number(relayAutoOffText) : currentRelayAutoOffMinutes;
       const relayAutoOffMinutes = Number.isFinite(relayAutoOffParsed) ? Math.max(0, Math.floor(relayAutoOffParsed)) : currentRelayAutoOffMinutes;
-      const ledActiveHigh = !!ids.ledActiveHighInput.checked;
-      const mqttEnabled = !ids.mqttDisabledInput.checked;
       const otaAutoScheduleEnabled = !ids.otaAutoScheduleDisabledInput.checked;
       const wifiSsid = ids.wifiSsidInput.value.trim();
       const wifiPass = ids.wifiPassInput.value;
-      const mqttEnabledChanged = mqttEnabled !== currentMqttEnabled;
-      const mqttAuthChanged = mqttUsername !== currentMqttUsername || mqttPassword.trim().length > 0;
       const otaAutoScheduleChanged = otaAutoScheduleEnabled !== currentOtaAutoScheduleEnabled;
       const relayAutoOffChanged = relayAutoOffMinutes !== currentRelayAutoOffMinutes;
-      const ledActiveHighChanged = ledActiveHigh !== currentLedActiveHigh;
 
-      if (!hostname && !mqttHost && !mqttPort && !wifiSsid && !wifiPass.trim() && !mqttEnabledChanged && !mqttAuthChanged && !otaAutoScheduleChanged && !relayAutoOffChanged && !ledActiveHighChanged) {
+      if (!hostname && !wifiSsid && !wifiPass.trim() && !otaAutoScheduleChanged && !relayAutoOffChanged) {
         showJson({ ok: false, error: 'enter at least one setting to save' });
         return;
       }
@@ -2003,18 +1599,8 @@ function runLedBootAnimation() {
       try {
         const body = new URLSearchParams();
         if (hostname) body.set('hostname', hostname);
-        if (mqttHost) body.set('mqtt_host', mqttHost);
-        if (mqttPort) body.set('mqtt_port', mqttPort);
-        if (mqttAuthChanged) {
-          body.set('mqtt_user', mqttUsername);
-          if (mqttPassword.trim().length > 0 || mqttUsername.length === 0) {
-            body.set('mqtt_pass', mqttPassword);
-          }
-        }
-        if (mqttEnabledChanged) body.set('mqtt_enabled', mqttEnabled ? '1' : '0');
         if (otaAutoScheduleChanged) body.set('ota_auto_schedule_enabled', otaAutoScheduleEnabled ? '1' : '0');
         if (relayAutoOffChanged) body.set('relay_auto_off_minutes', String(relayAutoOffMinutes));
-        if (ledActiveHighChanged) body.set('led_active_high', ledActiveHigh ? '1' : '0');
         if (wifiSsid) body.set('wifi_ssid', wifiSsid);
         if (wifiPass.trim()) body.set('wifi_pass', wifiPass);
 
@@ -2217,9 +1803,6 @@ function runLedBootAnimation() {
     document.getElementById('btnOff').addEventListener('click', () => sendCommand('/off', 'off'));
     document.getElementById('btnToggle').addEventListener('click', () => sendCommand('/toggle', 'toggle'));
     document.getElementById('btnRefresh').addEventListener('click', refreshStatus);
-    document.getElementById('btnRelayLedTest').addEventListener('click', () => runLedTest('/test/relay-led', 'test-relay-led'));
-    document.getElementById('btnWifiLedTest').addEventListener('click', () => runLedTest('/test/wifi-led', 'test-wifi-led'));
-    document.getElementById('btnAllLedTests').addEventListener('click', () => runLedTest('/test/leds', 'test-leds'));
     document.getElementById('btnSaveConfig').addEventListener('click', applyConfig);
     document.getElementById('btnScanWifi').addEventListener('click', scanWifi);
     document.getElementById('btnSaveTimeConfig').addEventListener('click', saveTimeConfig);
@@ -2237,9 +1820,6 @@ function runLedBootAnimation() {
     document.getElementById('btnTempTrimPlus1').addEventListener('click', () => adjustTemperatureTrim(1.0));
     document.getElementById('btnTempTrimReset').addEventListener('click', () => setTemperatureTrimOffset(0.0));
     document.getElementById('btnSaveTemperatureMonitoring').addEventListener('click', saveTemperatureMonitoring);
-    document.getElementById('btnLedBootAnimation').addEventListener('click', () => runLedBootAnimation());
-    document.getElementById('ledStripMasterBrightnessInput').addEventListener('change', (e) => updateMasterBrightness(e.target.value));
-    document.getElementById('ledStripLedBrightnessInputs').addEventListener('change', updatePerLedBrightness);
 
     resetScheduleForm();
     refreshStatus();
@@ -2295,22 +1875,6 @@ void WebControlServer::registerRoutes()
               { handleOff(); });
   gServer.on("/toggle", HTTP_POST, [this]()
               { handleToggle(); });
-  gServer.on("/test/relay-led", HTTP_POST, [this]()
-              { handleRelayLedTest(); });
-  gServer.on("/test/wifi-led", HTTP_POST, [this]()
-              { handleWifiLedTest(); });
-  gServer.on("/test/leds", HTTP_POST, [this]()
-              { handleAllLedTests(); });
-  gServer.on("/led/brightness", HTTP_GET, [this]()
-              { handleLedBrightnessGet(); });
-  gServer.on("/led/brightness", HTTP_POST, [this]()
-              { handleLedBrightnessSet(); });
-  gServer.on("/led/strip/brightness", HTTP_POST, [this]()
-              { handleLedStripBrightnessSet(); });
-  gServer.on("/led/status", HTTP_GET, [this]()
-              { handleLedStatusGet(); });
-  gServer.on("/led/boot-animation", HTTP_POST, [this]()
-              { handleLedBootAnimation(); });
   gServer.on("/status", HTTP_GET, [this]()
               { handleStatus(); });
   gServer.on("/config", HTTP_GET, [this]()
@@ -2347,16 +1911,6 @@ void WebControlServer::registerRoutes()
               { handleTemperatureTrimOffset(); });
   gServer.on("/temperature/calibration/reset", HTTP_POST, [this]()
               { handleTemperatureCalibrationReset(); });
-  gServer.on("/led/brightness", HTTP_GET, [this]()
-              { handleLedBrightnessGet(); });
-  gServer.on("/led/brightness", HTTP_POST, [this]()
-              { handleLedBrightnessSet(); });
-  gServer.on("/led/strip/brightness", HTTP_POST, [this]()
-              { handleLedStripBrightnessSet(); });
-  gServer.on("/led/status", HTTP_GET, [this]()
-              { handleLedStatusGet(); });
-  gServer.on("/led/boot-animation", HTTP_POST, [this]()
-              { handleLedBootAnimation(); });
   gServer.on("/favicon.ico", HTTP_GET, []()
               { gServer.send(204); });
   gServer.on("/wifi/scan", HTTP_GET, [this]()
@@ -2500,8 +2054,6 @@ void WebControlServer::handleStatus()
   json += relayStateText();
   json += "\",\"hostname\":\"";
   json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
-  json += "\",\"mqtt_client_id\":\"";
-  json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
   json += "\",\"firmware_version\":\"";
   json += FIRMWARE_VERSION;
   json += "\",\"uptime_ms\":";
@@ -2553,8 +2105,6 @@ void WebControlServer::handleStatus()
   {
     json += "0.00";
   }
-  json += ",\"led_active_high\":";
-  json += context.getLedActiveHigh != nullptr ? (context.getLedActiveHigh() ? "true" : "false") : (LED_ACTIVE_HIGH ? "true" : "false");
   json += "}";
   if (!sendCompleteResponse("application/json", json))
   {
@@ -2583,53 +2133,6 @@ void WebControlServer::handleConfigSave()
     {
       context.wifi->setCredentials(wifiSsid, wifiPass);
       wifiChanged = true;
-      settingsSaved = true;
-    }
-  }
-
-  if (context.mqtt != nullptr)
-  {
-    const String mqttHost = gServer.arg("mqtt_host");
-    const String mqttPortText = gServer.arg("mqtt_port");
-    const bool hasMqttUserArg = gServer.hasArg("mqtt_user");
-    const bool hasMqttPassArg = gServer.hasArg("mqtt_pass");
-    const String mqttUser = gServer.arg("mqtt_user");
-    const String mqttPass = gServer.arg("mqtt_pass");
-    const String mqttEnabledText = gServer.arg("mqtt_enabled");
-    if (mqttHost.length() > 0 || mqttPortText.length() > 0)
-    {
-      const String currentHost = context.mqtt->serverHost();
-      const int currentPort = context.mqtt->serverPort();
-      const String nextHost = mqttHost.length() > 0 ? mqttHost : currentHost;
-      int nextPort = currentPort;
-      if (mqttPortText.length() > 0)
-      {
-        nextPort = mqttPortText.toInt();
-      }
-      if (nextPort <= 0)
-      {
-        nextPort = MQTT_PORT;
-      }
-      context.mqtt->setServer(nextHost, nextPort);
-      settingsSaved = true;
-    }
-
-    if (mqttEnabledText.length() > 0)
-    {
-      context.mqtt->setEnabled(parseBoolArg(mqttEnabledText));
-      settingsSaved = true;
-    }
-
-    if (hasMqttUserArg || hasMqttPassArg)
-    {
-      const String nextUser = hasMqttUserArg ? mqttUser : context.mqtt->username();
-      String nextPass = hasMqttPassArg ? mqttPass : context.mqtt->password();
-      if (hasMqttUserArg && mqttUser.length() == 0 && !hasMqttPassArg)
-      {
-        nextPass = String();
-      }
-
-      context.mqtt->setCredentials(nextUser, nextPass);
       settingsSaved = true;
     }
   }
@@ -2667,25 +2170,6 @@ void WebControlServer::handleConfigSave()
     if (!context.setRelayAutoOffMinutes(relayAutoOffMinutes, error))
     {
       sendError(400, error.length() > 0 ? error.c_str() : "Failed to update relay auto-off setting");
-      return;
-    }
-
-    settingsSaved = true;
-  }
-
-  const String ledActiveHighText = gServer.arg("led_active_high");
-  if (ledActiveHighText.length() > 0)
-  {
-    if (context.setLedActiveHigh == nullptr)
-    {
-      sendError(500, "LED polarity setter is not available");
-      return;
-    }
-
-    String error;
-    if (!context.setLedActiveHigh(parseBoolArg(ledActiveHighText), error))
-    {
-      sendError(400, error.length() > 0 ? error.c_str() : "Failed to update LED polarity");
       return;
     }
 
@@ -3096,45 +2580,6 @@ void WebControlServer::handleTemperatureMonitoringEnabled()
   gServer.send(200, "application/json", buildTemperatureJson(context));
 }
 
-void WebControlServer::handleRelayLedTest()
-{
-  Serial.println("[HTTP] POST /test/relay-led");
-
-  if (context.startRelayLedTest == nullptr || !context.startRelayLedTest())
-  {
-    sendError(500, "Relay LED test is unavailable");
-    return;
-  }
-
-  gServer.send(200, "application/json", buildLedTestJson(context, "test-relay-led", "Relay LED test started for 5 seconds"));
-}
-
-void WebControlServer::handleWifiLedTest()
-{
-  Serial.println("[HTTP] POST /test/wifi-led");
-
-  if (context.startWifiLedTest == nullptr || !context.startWifiLedTest())
-  {
-    sendError(500, "Wi-Fi LED test is unavailable");
-    return;
-  }
-
-  gServer.send(200, "application/json", buildLedTestJson(context, "test-wifi-led", "Wi-Fi LED test started for 5 seconds"));
-}
-
-void WebControlServer::handleAllLedTests()
-{
-  Serial.println("[HTTP] POST /test/leds");
-
-  if (context.startAllLedTests == nullptr || !context.startAllLedTests())
-  {
-    sendError(500, "LED tests are unavailable");
-    return;
-  }
-
-  gServer.send(200, "application/json", buildLedTestJson(context, "test-leds", "Both LED tests started for 5 seconds"));
-}
-
 void WebControlServer::handleTemperatureCaptureLow()
 {
   Serial.println("[HTTP] POST /temperature/capture-low");
@@ -3284,213 +2729,6 @@ void WebControlServer::handleTemperatureCalibrationReset()
   gServer.send(200, "application/json", json);
 }
 
-void WebControlServer::handleLedBrightnessGet()
-{
-  Serial.println("[HTTP] GET /led/brightness");
-
-  if (context.indicatorLeds == nullptr)
-  {
-    sendError(500, "LED manager is not available");
-    return;
-  }
-
-  uint8_t masterBrightness = context.indicatorLeds->getMasterBrightness();
-  uint8_t perLedBrightness[5] = {0, 0, 0, 0, 0};
-
-  for (uint8_t i = 0; i < 5; i++)
-  {
-    perLedBrightness[i] = context.indicatorLeds->getPerLedBrightness(i);
-  }
-
-  String json = "{";
-  json += "\"ok\":true,";
-  json += "\"master_brightness\":";
-  json += masterBrightness;
-  json += ",\"per_led_brightness\":[";
-  json += perLedBrightness[0];
-  json += ",";
-  json += perLedBrightness[1];
-  json += ",";
-  json += perLedBrightness[2];
-  json += ",";
-  json += perLedBrightness[3];
-  json += ",";
-  json += perLedBrightness[4];
-  json += "]}";
-
-  gServer.send(200, "application/json", json);
-}
-
-void WebControlServer::handleLedBrightnessSet()
-{
-  Serial.println("[HTTP] POST /led/brightness");
-
-  if (context.indicatorLeds == nullptr)
-  {
-    sendError(500, "LED manager is not available");
-    return;
-  }
-
-  const String brightnessStr = gServer.arg("brightness");
-  if (brightnessStr.length() == 0)
-  {
-    sendError(400, "Missing brightness parameter");
-    return;
-  }
-
-  uint8_t brightness = brightnessStr.toInt();
-  if (brightness < 0 || brightness > LED_STRIP_HARD_LIMIT_BRIGHTNESS)
-  {
-    String error = "Brightness must be between 0 and ";
-    error += String(LED_STRIP_HARD_LIMIT_BRIGHTNESS);
-    sendError(400, error.c_str());
-    return;
-  }
-
-  if (!context.indicatorLeds->setMasterBrightness(brightness))
-  {
-    sendError(500, "Failed to set master brightness");
-    return;
-  }
-
-  String json = "{";
-  json += "\"ok\":true,";
-  json += "\"command\":\"led_brightness\",";
-  json += "\"master_brightness\":";
-  json += brightness;
-  json += ",\"message\":\"Master brightness set to " + String(brightness) + "\"}";
-
-  gServer.send(200, "application/json", json);
-}
-
-void WebControlServer::handleLedStripBrightnessSet()
-{
-  Serial.println("[HTTP] POST /led/strip/brightness");
-
-  if (context.indicatorLeds == nullptr)
-  {
-    sendError(500, "LED manager is not available");
-    return;
-  }
-
-  const String indexStr = gServer.arg("index");
-  const String brightnessStr = gServer.arg("brightness");
-
-  if (indexStr.length() == 0 || brightnessStr.length() == 0)
-  {
-    sendError(400, "Missing index or brightness parameter");
-    return;
-  }
-
-  uint8_t index = indexStr.toInt();
-  if (index < 0 || index >= LED_STRIP_COUNT)
-  {
-    String error = "Index must be between 0 and ";
-    error += String(LED_STRIP_COUNT - 1);
-    sendError(400, error.c_str());
-    return;
-  }
-
-  uint8_t brightness = brightnessStr.toInt();
-  if (brightness < 0 || brightness > LED_STRIP_HARD_LIMIT_BRIGHTNESS)
-  {
-    String error = "Brightness must be between 0 and ";
-    error += String(LED_STRIP_HARD_LIMIT_BRIGHTNESS);
-    sendError(400, error.c_str());
-    return;
-  }
-
-  if (!context.indicatorLeds->setPerLedBrightness(index, brightness))
-  {
-    sendError(500, "Failed to set per-LED brightness");
-    return;
-  }
-
-  String json = "{";
-  json += "\"ok\":true,";
-  json += "\"command\":\"led_per_led_brightness\",";
-  json += "\"index\":";
-  json += index;
-  json += ",\"brightness\":";
-  json += brightness;
-  json += ",\"message\":\"LED " + String(index) + " brightness set to " + String(brightness) + "\"}";
-
-  gServer.send(200, "application/json", json);
-}
-
-void WebControlServer::handleLedStatusGet()
-{
-  Serial.println("[HTTP] GET /led/status");
-
-  if (context.indicatorLeds == nullptr)
-  {
-    sendError(500, "LED manager is not available");
-    return;
-  }
-
-  String json = "{";
-  json += "\"ok\":true,";
-  json += "\"status\":[";
-  for (uint8_t i = 0; i < 5; i++)
-  {
-    int statusIndex = context.indicatorLeds->getStatusIndex(i);
-    const char *statusStr;
-    switch (statusIndex)
-    {
-        case 0: statusStr = "off"; break;
-        case 1: statusStr = "health_ok"; break;
-        case 2: statusStr = "health_degraded"; break;
-        case 3: statusStr = "health_fault"; break;
-        case 4: statusStr = "network_connecting"; break;
-        case 5: statusStr = "network_connected"; break;
-        case 6: statusStr = "network_failure"; break;
-        case 7: statusStr = "controller_configured"; break;
-        case 8: statusStr = "controller_connecting"; break;
-        case 9: statusStr = "controller_unavailable"; break;
-        case 10: statusStr = "relay_active"; break;
-        case 11: statusStr = "relay_idle"; break;
-        case 12: statusStr = "activity_pulse"; break;
-        case 13: statusStr = "activity_warning"; break;
-        case 14: statusStr = "activity_error"; break;
-        default: statusStr = "off";
-    }
-    json += statusStr;
-    if (i < 4)
-    {
-      json += ",";
-    }
-  }
-  json += "]}";
-
-  gServer.send(200, "application/json", json);
-}
-
-void WebControlServer::handleLedBootAnimation()
-{
-  Serial.println("[HTTP] POST /led/boot-animation");
-
-  if (context.indicatorLeds == nullptr)
-  {
-    sendError(500, "LED manager is not available");
-    return;
-  }
-
-  if (context.indicatorLeds->isBootAnimationActive())
-  {
-    context.indicatorLeds->bootAnimationComplete();
-    String json = "{\"ok\":true,\"command\":\"led_boot_animation\",\"message\":\"Animation stopped\"}";
-    gServer.send(200, "application/json", json);
-  }
-  else
-  {
-    unsigned long now = millis();
-    context.indicatorLeds->startBootAnimation(now);
-    String durationStr = String(LED_STRIP_BOOT_ANIMATION_DURATION_MS);
-    String json = "{\"ok\":true,\"command\":\"led_boot_animation\",\"message\":\"Animation started\",\"duration_ms\":" + durationStr + "}";
-    gServer.send(200, "application/json", json);
-  }
-}
-
 void WebControlServer::handleWifiScan()
 {
   Serial.println("[HTTP] GET /wifi/scan");
@@ -3530,8 +2768,6 @@ void WebControlServer::handleSetHostname()
 
   String json = "{\"ok\":true,\"command\":\"hostname\",\"hostname\":\"";
   json += context.getHostname != nullptr ? context.getHostname() : String("unknown");
-  json += "\",\"mqtt_client_id\":\"";
-  json += context.getMqttClientId != nullptr ? context.getMqttClientId() : String("unknown");
   json += "\"}";
   gServer.send(200, "application/json", json);
 }

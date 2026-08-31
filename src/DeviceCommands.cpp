@@ -172,7 +172,7 @@ void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
     router.registerCommand({"on", ON_ALIASES, sizeof(ON_ALIASES) / sizeof(ON_ALIASES[0]), "turn the relay on", handleOn});
     router.registerCommand({"off", OFF_ALIASES, sizeof(OFF_ALIASES) / sizeof(OFF_ALIASES[0]), "turn the relay off", handleOff});
     router.registerCommand({"toggle", TOGGLE_ALIASES, sizeof(TOGGLE_ALIASES) / sizeof(TOGGLE_ALIASES[0]), "toggle the relay state", handleToggle});
-    router.registerCommand({"state", STATE_ALIASES, sizeof(STATE_ALIASES) / sizeof(STATE_ALIASES[0]), "show relay, Wi-Fi, MQTT, and debug status", handleState});
+    router.registerCommand({"state", STATE_ALIASES, sizeof(STATE_ALIASES) / sizeof(STATE_ALIASES[0]), "show relay, Wi-Fi, and debug status", handleState});
     router.registerCommand({"wifi", nullptr, 0, "print full Wi-Fi details", handleWifi});
     router.registerCommand({"scan", nullptr, 0, "scan and print nearby Wi-Fi networks", handleScan});
     router.registerCommand({"reconnect", nullptr, 0, "force a Wi-Fi reconnect", handleReconnect});

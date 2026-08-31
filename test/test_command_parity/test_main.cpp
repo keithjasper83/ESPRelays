@@ -236,15 +236,13 @@ void test_ota_update_success_restarts_device()
     TEST_ASSERT_TRUE(ESP.restarted);
 }
 
-void test_web_routes_and_mqtt_path_match_router_commands()
+void test_web_routes_and_unified_path_preserve_router_commands()
 {
     const std::string web = readWorkspaceFile("src/WebControlServer.cpp");
-    const std::string mqtt = readWorkspaceFile("src/MqttManager.cpp");
     const std::string mainText = readWorkspaceFile("src/main.cpp");
     const std::string wifi = readWorkspaceFile("src/WiFiManager.cpp");
 
     TEST_ASSERT_FALSE(web.empty());
-    TEST_ASSERT_FALSE(mqtt.empty());
     TEST_ASSERT_FALSE(mainText.empty());
     TEST_ASSERT_FALSE(wifi.empty());
 
@@ -256,12 +254,6 @@ void test_web_routes_and_mqtt_path_match_router_commands()
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"off\")"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, web.find("dispatchCommand(\"toggle\")"));
 
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("topicMatterbridgeWrite = matterbridgeRoot + \"/write/root\""));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("mqtt.subscribe(topicMatterbridgeWrite.c_str())"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mqtt.find("operationHandler(\"relay\", \"set\""));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("if (element == \"relay\" && (operation == \"get\" || operation == \"state\"))"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setOperationHandler(handleMqttOperation);"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("mqttManager.setElementHandlers("));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("unifiedServerClient.begin("));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, mainText.find("unifiedServerClient.maintain("));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, wifi.find("WiFi.setSleep(false)"));
@@ -277,6 +269,6 @@ int main(int argc, char **argv)
     UNITY_BEGIN();
     RUN_TEST(test_device_commands_dispatch_and_aliases_work);
     RUN_TEST(test_ota_update_success_restarts_device);
-    RUN_TEST(test_web_routes_and_mqtt_path_match_router_commands);
+    RUN_TEST(test_web_routes_and_unified_path_preserve_router_commands);
     return UNITY_END();
 }

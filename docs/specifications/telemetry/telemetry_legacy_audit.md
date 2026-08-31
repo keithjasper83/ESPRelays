@@ -1,3 +1,6 @@
+> Historical experiment: MQTT telemetry described here was removed in 4.2.0.
+> Current device state reporting uses Unified Server WebSockets.
+
 # Telemetry Legacy Audit
 
 ## Overview

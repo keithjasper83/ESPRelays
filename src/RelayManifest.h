@@ -7,13 +7,12 @@ struct RelayManifestSnapshot {
     kjunified::Text hardwareId, legacyDeviceId, name, firmwareVersion, firmwareReleaseDate;
     bool relayOn = false, probePresent = false, monitoringEnabled = false, calibrationReady = false;
     double temperatureC = NAN;
-    int relayPin = 5, temperaturePin = 1, relayLedPin = 6, wifiLedPin = 7, stripPin = 8, stripCount = 5;
-    bool discreteLedsEnabled = false;
+    int relayPin = 5, temperaturePin = 1;
     int rawTemperature = -1, autoOffMinutes = 0;
     bool lowValid = false, highValid = false;
     int lowRaw = -1, highRaw = -1;
     double lowC = NAN, highC = NAN, trimC = 0;
-    bool wifiConnected = false, mqttConnected = false, timeValid = false;
+    bool wifiConnected = false, timeValid = false;
     unsigned long uptimeSeconds = 0;
 };
 
@@ -24,7 +23,7 @@ inline kjunified::Manifest buildRelayManifest(const RelayManifestSnapshot &s) {
     d["protocol_version"] = 1;
     d["schema_version"] = 1;
     // Bump whenever keys, structure or supported semantics change, never on state/name changes.
-    d["manifest_revision"] = "relay-2";
+    d["manifest_revision"] = "relay-3";
     d["hardware"]["id"] = s.hardwareId;
     d["hardware"]["model"] = "esp32-c3";
     d["firmware"]["name"] = "esp-relay-controller";
@@ -32,9 +31,8 @@ inline kjunified::Manifest buildRelayManifest(const RelayManifestSnapshot &s) {
     d["firmware"]["release_date"] = s.firmwareReleaseDate;
     d["legacy_device_id"] = s.legacyDeviceId;
     d["name"] = s.name;
-    enum Node { Outputs, Relay, Sensors, Temperature, Calibration, Indicators,
-                RelayLed, WifiLed, Strip, Settings, AutoOff, Monitoring, Trim,
-                Status, Wifi, Mqtt, Clock, Uptime, Restart, NodeCount };
+    enum Node { Outputs, Relay, Sensors, Temperature, Calibration, Settings, AutoOff, Monitoring, Trim,
+                Status, Wifi, Clock, Uptime, Restart, NodeCount };
     struct Descriptor { int parent; const char *key; const char *type; const char *label; const char *access; bool available; };
     // Register structure as data to avoid repeating ArduinoJson setup code in flash.
     static const Descriptor descriptors[] = {
@@ -43,17 +41,12 @@ inline kjunified::Manifest buildRelayManifest(const RelayManifestSnapshot &s) {
         {-1, "sensors", "group", "Sensors", "read", true},
         {Sensors, "temperature", "temperature_sensor", "Temperature", "read", false},
         {Temperature, "temperature-calibration", "calibration", "Calibration", "read_write", true},
-        {-1, "indicators", "group", "Configured indicators", "read", false},
-        {Indicators, "led-relay", "indicator", "Relay indicator", "read", false},
-        {Indicators, "led-wifi", "indicator", "Wi-Fi indicator", "read", false},
-        {Indicators, "led-strip", "led_strip", "LED strip", "read", false},
         {-1, "settings", "group", "Settings", "read", true},
         {Settings, "relay-auto-off", "number", "Relay auto-off", "read_write", true},
         {Settings, "temperature-monitoring", "boolean", "Temperature monitoring", "read_write", true},
         {Settings, "temperature-trim", "number", "Temperature trim", "read_write", true},
         {-1, "status", "group", "Status", "read", true},
         {Status, "wifi-connected", "boolean", "Wi-Fi connected", "read", true},
-        {Status, "mqtt-connected", "boolean", "MQTT connected", "read", true},
         {Status, "time-valid", "boolean", "Clock synchronized", "read", true},
         {Status, "uptime", "number", "Uptime", "read", true},
         {Status, "restart", "action", "Restart", "action", true},
@@ -105,19 +98,6 @@ inline kjunified::Manifest buildRelayManifest(const RelayManifestSnapshot &s) {
     calibration["metadata"]["capture_available"] = s.probePresent && s.monitoringEnabled;
     calCommands.add("reset_calibration");
 
-    auto leds = nodes[Indicators];
-    leds["metadata"]["manager_enabled"] = false;
-    const int pins[] = {s.relayLedPin, s.wifiLedPin, s.stripPin};
-    for (unsigned i = 0; i < 3; ++i) {
-        auto led = nodes[RelayLed + i];
-        led["state"] = nullptr;
-        led["metadata"]["gpio"] = pins[i];
-        led["metadata"]["configured"] = true;
-        led["metadata"]["enabled"] = false;
-        led["metadata"]["fitted"] = nullptr; // configuration alone does not prove hardware is fitted
-        if (i == 2) led["metadata"]["configured_count"] = s.stripCount;
-        else led["metadata"]["discrete_leds_configured_enabled"] = s.discreteLedsEnabled;
-    }
     auto autoOff = nodes[AutoOff];
     autoOff["state"] = s.autoOffMinutes;
     autoOff["unit"] = "min";
@@ -137,7 +117,6 @@ inline kjunified::Manifest buildRelayManifest(const RelayManifestSnapshot &s) {
     trim["step"] = 0.1;
     trim["commands"].to<JsonArray>().add("set");
     nodes[Wifi]["state"] = s.wifiConnected;
-    nodes[Mqtt]["state"] = s.mqttConnected;
     nodes[Clock]["state"] = s.timeValid;
     auto uptime = nodes[Uptime];
     uptime["state"] = s.uptimeSeconds;

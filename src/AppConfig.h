@@ -26,13 +26,6 @@ constexpr uint8_t DEBUG_JUMPER_PIN = 4;
 constexpr uint8_t RELAY_PIN = 5;
 constexpr bool RELAY_ACTIVE_LOW = false;
 
-constexpr uint8_t RELAY_LED_PIN = 6;
-constexpr uint8_t WIFI_LED_PIN = 7;
-constexpr bool LED_ACTIVE_HIGH = true;
-constexpr bool DISCRETE_STATUS_LEDS_ENABLED = false;
-constexpr uint32_t WIFI_LED_BLINK_INTERVAL_MS = 5000;
-constexpr uint32_t WIFI_LED_PULSE_MS = 150;
-
 constexpr uint8_t RELAY_BUTTON_PIN = 3;
 constexpr uint8_t RESET_BUTTON_PIN = 10;
 // GPIO9 is the ESP32-C3 board's BOOT button. Hold it while the firmware is
@@ -46,15 +39,6 @@ constexpr int TEMP_PROBE_PRESENT_MIN_RAW = 200;
 constexpr int TEMP_PROBE_PRESENT_MAX_RAW = 3900;
 constexpr uint32_t TEMP_PROBE_SAMPLE_INTERVAL_MS = 1000;
 
-// Addressable LED strip configuration (optional, GPIO 8 safe)
-constexpr uint8_t LED_STRIP_PIN = 8;
-constexpr uint8_t LED_STRIP_COUNT = 5;
-constexpr char LED_STRIP_PROTOCOL[] = "WS2812B";
-constexpr uint8_t LED_STRIP_MASTER_BRIGHTNESS_DEFAULT = 128;  // 50% default
-constexpr uint8_t LED_STRIP_HARD_LIMIT_BRIGHTNESS = 204;      // 80% of 255, non-bypassable
-constexpr bool LED_STRIP_BOOT_ANIMATION_DEFAULT = true;
-constexpr uint32_t LED_STRIP_BOOT_ANIMATION_DURATION_MS = 2000;  // 2 seconds
-
 constexpr char WIFI_SSID[] = WIFI_SSID_DEFAULT;
 constexpr char WIFI_PASS[] = WIFI_PASS_DEFAULT;
 
@@ -62,26 +46,10 @@ constexpr char DEVICE_HOSTNAME_DEFAULT[] = "homerelay";
 constexpr char DEVICE_NAME_DEFAULT[] = "Home Relay";
 constexpr char DEVICE_TYPE_DEFAULT[] = "relay";
 constexpr char FIRMWARE_NAME[] = "esp-relay-controller";
-constexpr char FIRMWARE_VERSION[] = "4.1.0";
+constexpr char FIRMWARE_VERSION[] = "4.2.0";
 // The release workflow replaces "unreleased" before compiling release assets.
-constexpr char FIRMWARE_RELEASE_DATE[] = "2026-08-16";
+constexpr char FIRMWARE_RELEASE_DATE[] = "unreleased";
 constexpr uint32_t WIFI_CREDENTIALS_PROFILE_VERSION = 2;
-
-constexpr char MQTT_HOST[] = "192.168.0.50";
-constexpr int MQTT_PORT = 1883;
-#ifndef MQTT_USER_DEFAULT
-#define MQTT_USER_DEFAULT ""
-#endif
-
-#ifndef MQTT_PASS_DEFAULT
-#define MQTT_PASS_DEFAULT ""
-#endif
-
-constexpr char MQTT_USER[] = MQTT_USER_DEFAULT;
-constexpr char MQTT_PASS[] = MQTT_PASS_DEFAULT;
-
-// Must match the base topic configured in the Matterbridge MQTT plugin.
-constexpr char MATTERBRIDGE_MQTT_TOPIC[] = "matterbridge";
 
 constexpr char TIME_SERVER_DEFAULT[] = "pool.ntp.org";
 constexpr char TIME_SERVER_FALLBACK_1[] = "time.google.com";

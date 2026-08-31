@@ -8,7 +8,16 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
 
 All notable changes to this firmware project are documented in this file.
 
-## Unreleased
+## Unreleased — 4.2.0 development
+
+- Removed MQTT/Matterbridge control, telemetry, configuration and dependencies.
+- Removed disconnected LED controls, configuration, manifest nodes and NeoPixel dependency.
+- Removed unused vendored mDNS and obsolete generated ESP-IDF build stubs; SDK mDNS remains.
+- Manifest revision `relay-3` removes retired capabilities without rekeying surviving nodes.
+- Added embedded-console and cross-client removal regression tests; CI and release run console tests.
+- No automatic NVS erase; see [compatibility and storage report](FIRMWARE_CLEANUP.md).
+
+## Historical experiments (superseded by 4.2.0)
 
 - MQTT topic contract migrated to grouped element operations:
   - `home/<device>/<element>/set`

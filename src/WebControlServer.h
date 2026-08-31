@@ -11,15 +11,12 @@
 class CommandRouter;
 class RelayController;
 class WiFiManager;
-class MqttManager;
 class TimeSyncManager;
 class ScheduleManager;
 class OtaUpdateManager;
-class IndicatorLeds;
 
 using HostnameGetter = String (*)();
 using HostnameSetter = bool (*)(const String &hostname, String &error);
-using MqttClientIdGetter = String (*)();
 using NvsHealthGetter = String (*)();
 using OtaAutoScheduleGetter = bool (*)();
 using OtaAutoScheduleSetter = bool (*)(bool enabled, String &error);
@@ -34,10 +31,6 @@ using TemperatureProbeFloatGetter = float (*)();
 using TemperatureCaptureSetter = bool (*)(float knownTempC, String &error);
 using TemperatureCalibrationAction = bool (*)(String &error);
 using TemperatureTrimSetter = bool (*)(float offsetC, String &error);
-using LedTestAction = bool (*)();
-using LedTestStatusGetter = bool (*)();
-using LedPolarityGetter = bool (*)();
-using LedPolaritySetter = bool (*)(bool activeHigh, String &error);
 using UnifiedServerSetter = bool (*)(const String &serverUrl, String &error);
 
 struct WebControlContext
@@ -45,7 +38,6 @@ struct WebControlContext
     CommandRouter *router = nullptr;
     RelayController *relay = nullptr;
     WiFiManager *wifi = nullptr;
-    MqttManager *mqtt = nullptr;
     TimeSyncManager *timeSync = nullptr;
     ScheduleManager *schedule = nullptr;
     OtaUpdateManager *ota = nullptr;
@@ -53,7 +45,6 @@ struct WebControlContext
     // Read-only snapshot provider, deliberately separate from enrollment callbacks.
     String (*getManifest)() = nullptr;
     HostnameSetter setHostname = nullptr;
-    MqttClientIdGetter getMqttClientId = nullptr;
     NvsHealthGetter getNvsHealth = nullptr;
     OtaAutoScheduleGetter getOtaAutoScheduleEnabled = nullptr;
     OtaAutoScheduleSetter setOtaAutoScheduleEnabled = nullptr;
@@ -79,15 +70,7 @@ struct WebControlContext
     TemperatureCaptureSetter captureHighCalibration = nullptr;
     TemperatureCalibrationAction resetTemperatureCalibration = nullptr;
     TemperatureTrimSetter setTemperatureTrimOffsetC = nullptr;
-    LedTestAction startRelayLedTest = nullptr;
-    LedTestAction startWifiLedTest = nullptr;
-    LedTestAction startAllLedTests = nullptr;
-    LedTestStatusGetter getRelayLedTestActive = nullptr;
-    LedTestStatusGetter getWifiLedTestActive = nullptr;
-    LedPolarityGetter getLedActiveHigh = nullptr;
-    LedPolaritySetter setLedActiveHigh = nullptr;
     UnifiedServerSetter setUnifiedServer = nullptr;
-    IndicatorLeds *indicatorLeds = nullptr;
 };
 
 class WebControlServer
@@ -125,14 +108,6 @@ private:
     void handleTemperatureCaptureHigh();
     void handleTemperatureCalibrationReset();
     void handleTemperatureTrimOffset();
-    void handleRelayLedTest();
-    void handleWifiLedTest();
-    void handleAllLedTests();
-    void handleLedBrightnessGet();
-    void handleLedBrightnessSet();
-    void handleLedStripBrightnessSet();
-    void handleLedStatusGet();
-    void handleLedBootAnimation();
     void handleSetHostname();
     void handleUnifiedHello();
     void handleUnifiedManifest();

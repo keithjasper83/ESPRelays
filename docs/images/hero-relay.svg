@@ -24,7 +24,7 @@ Contact: https://github.com/keithjasper83/ESPRelays/issues
   <rect x="70" y="74" width="500" height="270" rx="18" fill="url(#card)" stroke="#ffffff" stroke-opacity="0.35"/>
   <text x="100" y="138" font-family="Segoe UI, Arial, sans-serif" font-size="28" fill="#F8F7F1" font-weight="700">ContactorRelays</text>
   <text x="100" y="180" font-family="Segoe UI, Arial, sans-serif" font-size="20" fill="#F8F7F1">Local-first ESP32 relay automation</text>
-  <text x="100" y="216" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#F8F7F1">MQTT • OTA • Scheduling • Discovery</text>
+  <text x="100" y="216" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#F8F7F1">WebSocket • OTA • Scheduling • Discovery</text>
 
   <g transform="translate(650,68)">
     <rect x="0" y="0" width="470" height="284" rx="18" fill="#051D1D" fill-opacity="0.45" stroke="#D9C26C" stroke-opacity="0.75"/>

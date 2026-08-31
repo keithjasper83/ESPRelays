@@ -40,6 +40,14 @@ jobs:
       - name: Run host tests
         run: pio test -vvv -e native
 
+      - name: Setup Node for embedded console tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Test embedded web console
+        run: node --test test/web/*.test.cjs
+
       - name: Enforce coverage gate
         run: |
           gcovr \

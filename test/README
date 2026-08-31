@@ -19,12 +19,14 @@ Coverage gate:
 Current host test suites:
 1. test_defaults: default constants and range checks from src/AppConfig.h.
 2. test_command_router: command registration, alias, and dispatch behavior.
-3. test_command_parity: command parity across terminal/router, web mappings, and MQTT handler path.
+3. test_command_parity: command parity across terminal/router, web mappings, and Unified Server connection path.
 4. test_http_contracts: required GET/POST routes and form field handling contracts.
 
 Optional hardware smoke checks (manual, non-blocking):
 1. Flash firmware and open serial monitor.
 2. Issue serial commands: on, off, toggle, state, ota-check.
 3. Call web POST endpoints: /on, /off, /toggle, /config, /time/config, /schedule/add.
-4. Publish MQTT commands to the device-specific command topic only (home/<hostname>/command).
-5. Verify relay state and telemetry updates in web/MQTT output.
+4. Exercise commands through the Unified Server WebSocket.
+5. Verify relay state and telemetry updates in HTTP/WebSocket output.
+
+Embedded web console: `node --test test/web/*.test.cjs` exercises real embedded JavaScript with a host DOM/network harness.
