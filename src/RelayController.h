@@ -13,7 +13,7 @@ class RelayController
 public:
     using StateChangedCallback = void (*)(bool state);
 
-    void begin();
+    void begin(bool forceOff);
     void maintain(unsigned long nowMs);
     bool isOn() const;
     void set(bool on);
@@ -23,6 +23,7 @@ public:
     bool setAutoOffMinutes(int minutes, String &error);
     bool autoOffArmed() const;
     long autoOffRemainingSeconds() const;
+    bool bootFailsafeApplied() const;
 
 private:
     void applyOutput() const;
@@ -39,4 +40,5 @@ private:
     unsigned long autoOffDeadlineMs = 0;
     uint32_t autoOffDeadlineEpoch = 0;
     uint32_t autoOffFallbackRemainingMs = 0;
+    bool bootFailsafeAppliedValue = false;
 };

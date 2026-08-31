@@ -37,6 +37,8 @@ constexpr uint32_t FACTORY_RESET_HOLD_MS = 5000;
 constexpr uint8_t TEMP_PROBE_ADC_PIN = 1;
 constexpr int TEMP_PROBE_PRESENT_MIN_RAW = 200;
 constexpr int TEMP_PROBE_PRESENT_MAX_RAW = 3900;
+constexpr uint8_t TEMP_PROBE_PRESENT_STABLE_SAMPLES = 5;
+constexpr uint8_t TEMP_PROBE_ABSENT_STABLE_SAMPLES = 5;
 constexpr uint32_t TEMP_PROBE_SAMPLE_INTERVAL_MS = 1000;
 
 constexpr char WIFI_SSID[] = WIFI_SSID_DEFAULT;

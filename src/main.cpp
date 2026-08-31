@@ -10,7 +10,9 @@
 #include "RelayManifest.h"
 #include <Preferences.h>
 #include <WiFi.h>
+#include <string.h>
 #include <esp_bt.h>
+#include <esp_system.h>
 #include <ctype.h>
 #include <time.h>
 #include <esp32-hal-cpu.h>
@@ -21,6 +23,7 @@
 #include "DeviceCommands.h"
 #include "OtaUpdateManager.h"
 #include "RelayController.h"
+#include "ResetDiagnostics.h"
 #include "ScheduleManager.h"
 #include "TimeSyncManager.h"
 #include "TemperatureProbeManager.h"
@@ -56,14 +59,63 @@ bool lastDiscoveryWifiConnected = false;
 bool deviceHostnameNvsReady = false;
 bool otaAutoScheduleEnabled = true;
 bool otaAutoScheduleNvsReady = false;
+DeviceResetReason bootResetReason = DeviceResetReason::Unknown;
+uint32_t brownoutCount = 0;
 
 namespace
 {
     constexpr char DEVICE_PREF_NAMESPACE[] = "device_cfg";
     constexpr char DEVICE_PREF_HOSTNAME[] = "hostname";
     constexpr char DEVICE_PREF_OTA_AUTO_SCHEDULE[] = "ota_auto_sched";
+    constexpr char RESET_DIAG_PREF_NAMESPACE[] = "reset_diag";
+    constexpr char RESET_DIAG_PREF_BROWNOUT_COUNT[] = "brownout_count";
     constexpr unsigned long SERIAL_IDLE_SUBMIT_MS = 1200;
     constexpr size_t SERIAL_MAX_COMMAND_LEN = 128;
+
+    DeviceResetReason classifyEspResetReason(const esp_reset_reason_t reason)
+    {
+        switch (reason)
+        {
+        case ESP_RST_BROWNOUT: return DeviceResetReason::Brownout;
+        case ESP_RST_POWERON: return DeviceResetReason::PowerOn;
+        case ESP_RST_SW: return DeviceResetReason::Software;
+        case ESP_RST_EXT: return DeviceResetReason::External;
+        case ESP_RST_PANIC: return DeviceResetReason::Panic;
+        case ESP_RST_DEEPSLEEP: return DeviceResetReason::DeepSleep;
+        case ESP_RST_INT_WDT:
+        case ESP_RST_TASK_WDT:
+        case ESP_RST_WDT: return DeviceResetReason::Watchdog;
+        default: return DeviceResetReason::Unknown;
+        }
+    }
+
+    uint32_t recordBrownoutCount(const DeviceResetReason reason)
+    {
+        Preferences preferences;
+        if (!preferences.begin(RESET_DIAG_PREF_NAMESPACE, false))
+        {
+            Serial.println("[NVS] Warning: reset diagnostics preferences unavailable.");
+            return 0;
+        }
+
+        uint32_t brownoutCount = preferences.getULong(RESET_DIAG_PREF_BROWNOUT_COUNT, 0);
+        if (reason == DeviceResetReason::Brownout && brownoutCount < UINT32_MAX)
+        {
+            ++brownoutCount;
+            preferences.putULong(RESET_DIAG_PREF_BROWNOUT_COUNT, brownoutCount);
+        }
+        preferences.end();
+        return brownoutCount;
+    }
+
+    const char *temperatureStorageSlotName(const char *slot)
+    {
+        if (slot != nullptr && strcmp(slot, "cal_a") == 0) return "cal_a";
+        if (slot != nullptr && strcmp(slot, "cal_b") == 0) return "cal_b";
+        if (slot != nullptr && strcmp(slot, "cal_v2") == 0) return "cal_v2";
+        if (slot != nullptr && strcmp(slot, "legacy_keys") == 0) return "legacy_keys";
+        return "none";
+    }
 
 }
 
@@ -114,6 +166,12 @@ int getHighCalibrationRaw();
 float getLowCalibrationTempC();
 float getHighCalibrationTempC();
 float getTemperatureTrimOffsetC();
+const char *getResetReason();
+uint32_t getBrownoutCount();
+bool getTemperatureStorageLoadOk();
+bool getTemperatureStorageWriteVerified();
+const char *getTemperatureStorageSlot();
+uint8_t getTemperatureStorageGeneration();
 bool captureLowCalibration(float knownTempC, String &error);
 bool captureHighCalibration(float knownTempC, String &error);
 bool resetTemperatureCalibration(String &error);
@@ -531,6 +589,22 @@ String getUnifiedStateJson()
     state += temperatureProbeManager.highPointValid() ? String(temperatureProbeManager.highPointTempC(), 2) : "null";
     state += ",\"temperature_calibration_record_version\":" + String(TEMPERATURE_CALIBRATION_VERSION);
     state += ",\"temperature_trim_offset_c\":" + String(temperatureProbeManager.trimOffsetC(), 2);
+    state += ",\"reset_reason\":\"";
+    state += deviceResetReasonName(bootResetReason);
+    state += "\"";
+    state += ",\"brownout_count\":" + String(brownoutCount);
+    state += ",\"relay_boot_failsafe_applied\":";
+    state += relayController.bootFailsafeApplied() ? "true" : "false";
+    state += ",\"temperature_probe_stable\":";
+    state += temperatureProbeManager.isPresent() ? "true" : "false";
+    state += ",\"temperature_storage_load_ok\":";
+    state += temperatureProbeManager.storageLoadOk() ? "true" : "false";
+    state += ",\"temperature_storage_write_verified\":";
+    state += temperatureProbeManager.lastStorageWriteVerified() ? "true" : "false";
+    state += ",\"temperature_storage_slot\":\"";
+    state += temperatureStorageSlotName(temperatureProbeManager.selectedStorageSlot());
+    state += "\"";
+    state += ",\"temperature_storage_generation\":" + String(temperatureProbeManager.calibrationGenerationValue());
     state += ",\"rssi\":" + String(WiFi.RSSI());
     state += ",\"uptime_ms\":" + String(millis()) + "}";
     return state;
@@ -946,6 +1020,36 @@ float getTemperatureTrimOffsetC()
     return temperatureProbeManager.trimOffsetC();
 }
 
+const char *getResetReason()
+{
+    return deviceResetReasonName(bootResetReason);
+}
+
+uint32_t getBrownoutCount()
+{
+    return brownoutCount;
+}
+
+bool getTemperatureStorageLoadOk()
+{
+    return temperatureProbeManager.storageLoadOk();
+}
+
+bool getTemperatureStorageWriteVerified()
+{
+    return temperatureProbeManager.lastStorageWriteVerified();
+}
+
+const char *getTemperatureStorageSlot()
+{
+    return temperatureStorageSlotName(temperatureProbeManager.selectedStorageSlot());
+}
+
+uint8_t getTemperatureStorageGeneration()
+{
+    return temperatureProbeManager.calibrationGenerationValue();
+}
+
 bool captureLowCalibration(float knownTempC, String &error)
 {
     return temperatureProbeManager.captureLow(knownTempC, error);
@@ -1119,8 +1223,13 @@ void applyWeeklyOtaUpdateSchedule()
 
 void setup()
 {
+    bootResetReason = classifyEspResetReason(esp_reset_reason());
     Serial.begin(115200);
     delay(2500);
+
+    brownoutCount = recordBrownoutCount(bootResetReason);
+    Serial.printf("[RESET] reason=%s brownout_count=%lu\n", deviceResetReasonName(bootResetReason),
+                  static_cast<unsigned long>(brownoutCount));
 
     const bool cpuReduced = setCpuFrequencyMhz(80);
     Serial.printf("[POWER] CPU frequency=%u MHz reduced=%s deep_sleep=disabled light_sleep=disabled\n",
@@ -1146,7 +1255,7 @@ void setup()
     buttonManager.setResetButtonCallback(handleResetButtonPress);
     buttonManager.setFactoryResetCallback(handleFactoryResetButtonHold);
 
-    relayController.begin();
+    relayController.begin(shouldForceRelayOff(bootResetReason));
     relayController.setStateChangedCallback(onRelayStateChanged);
 
     commandContext.relay = &relayController;
@@ -1189,6 +1298,12 @@ void setup()
     webContext.getLowCalibrationTempC = getLowCalibrationTempC;
     webContext.getHighCalibrationTempC = getHighCalibrationTempC;
     webContext.getTemperatureTrimOffsetC = getTemperatureTrimOffsetC;
+    webContext.getResetReason = getResetReason;
+    webContext.getBrownoutCount = getBrownoutCount;
+    webContext.getTemperatureStorageLoadOk = getTemperatureStorageLoadOk;
+    webContext.getTemperatureStorageWriteVerified = getTemperatureStorageWriteVerified;
+    webContext.getTemperatureStorageSlot = getTemperatureStorageSlot;
+    webContext.getTemperatureStorageGeneration = getTemperatureStorageGeneration;
     webContext.captureLowCalibration = captureLowCalibration;
     webContext.captureHighCalibration = captureHighCalibration;
     webContext.resetTemperatureCalibration = resetTemperatureCalibration;

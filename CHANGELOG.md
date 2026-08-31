@@ -6,6 +6,9 @@
 
 ## Unreleased
 
+- Debounce temperature-probe presence changes, verify calibration storage writes, and expose reset diagnostics for recovery investigations.
+- Force relays OFF only after a confirmed brownout; non-brownout restoration of the persisted relay state is unchanged.
+- Do not embed calibration values in firmware; calibration remains device-specific persisted data.
 - Reject equal, reversed, out-of-range, or non-numeric temperature calibration references before they can be reported as ready or persisted as a complete pair.
 - Preserve valid single-point records during guided capture and roll back in-memory changes if NVS persistence fails.
 

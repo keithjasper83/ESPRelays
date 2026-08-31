@@ -2064,8 +2064,26 @@ void WebControlServer::handleStatus()
   json += context.getRelayAutoOffArmed != nullptr ? (context.getRelayAutoOffArmed() ? "true" : "false") : "false";
   json += ",\"relay_auto_off_remaining_s\":";
   json += context.getRelayAutoOffRemainingSeconds != nullptr ? context.getRelayAutoOffRemainingSeconds() : 0;
+  json += ",\"reset_reason\":\"";
+  json += context.getResetReason != nullptr ? context.getResetReason() : "unknown";
+  json += "\"";
+  json += ",\"brownout_count\":";
+  json += context.getBrownoutCount != nullptr ? String(context.getBrownoutCount()) : String(0);
+  json += ",\"relay_boot_failsafe_applied\":";
+  json += context.relay != nullptr && context.relay->bootFailsafeApplied() ? "true" : "false";
   json += ",\"temperature_probe_present\":";
   json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
+  json += ",\"temperature_probe_stable\":";
+  json += context.getTemperatureProbePresent != nullptr ? (context.getTemperatureProbePresent() ? "true" : "false") : "false";
+  json += ",\"temperature_storage_load_ok\":";
+  json += context.getTemperatureStorageLoadOk != nullptr ? (context.getTemperatureStorageLoadOk() ? "true" : "false") : "false";
+  json += ",\"temperature_storage_write_verified\":";
+  json += context.getTemperatureStorageWriteVerified != nullptr ? (context.getTemperatureStorageWriteVerified() ? "true" : "false") : "false";
+  json += ",\"temperature_storage_slot\":\"";
+  json += context.getTemperatureStorageSlot != nullptr ? context.getTemperatureStorageSlot() : "none";
+  json += "\"";
+  json += ",\"temperature_storage_generation\":";
+  json += context.getTemperatureStorageGeneration != nullptr ? String(context.getTemperatureStorageGeneration()) : String(0);
   json += ",\"temperature_probe_raw\":";
   if (context.getTemperatureProbeRaw != nullptr)
   {

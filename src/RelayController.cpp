@@ -127,10 +127,17 @@ void RelayController::persistState()
     preferences.end();
 }
 
-void RelayController::begin()
+void RelayController::begin(const bool forceOff)
 {
     pinMode(RELAY_PIN, OUTPUT);
     loadPersistedState();
+    bootFailsafeAppliedValue = forceOff && relayOn;
+    if (forceOff)
+    {
+        relayOn = false;
+        clearAutoOffTimer();
+        persistState();
+    }
     applyOutput();
 }
 
@@ -244,6 +251,11 @@ long RelayController::autoOffRemainingSeconds() const
     }
 
     return static_cast<long>((autoOffDeadlineMs - nowMs) / 1000UL);
+}
+
+bool RelayController::bootFailsafeApplied() const
+{
+    return bootFailsafeAppliedValue;
 }
 
 void RelayController::applyOutput() const

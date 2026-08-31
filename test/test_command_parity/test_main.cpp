@@ -80,7 +80,7 @@ namespace
     }
 }
 
-void RelayController::begin() {}
+void RelayController::begin(bool) {}
 void RelayController::maintain(unsigned long) {}
 bool RelayController::isOn() const { return gRelayState; }
 void RelayController::set(bool on)

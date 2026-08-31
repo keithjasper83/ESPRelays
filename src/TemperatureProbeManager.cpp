@@ -9,6 +9,7 @@
 #include <math.h>
 #include <Preferences.h>
 
+#include "CalibrationRecordStorage.h"
 #include "TemperatureCalibrationRecord.h"
 
 namespace
@@ -26,22 +27,24 @@ namespace
     constexpr char TEMP_PREF_RECORD_A[] = "cal_a";
     constexpr char TEMP_PREF_RECORD_B[] = "cal_b";
 
-    bool isProbeInValidRange(int rawValue)
+    class PreferencesCalibrationBlobStorage final : public CalibrationBlobStorage
     {
-        return rawValue > TEMP_PROBE_PRESENT_MIN_RAW && rawValue < TEMP_PROBE_PRESENT_MAX_RAW;
-    }
+    public:
+        explicit PreferencesCalibrationBlobStorage(Preferences &preferences) : preferences(preferences) {}
 
-    bool readRecord(Preferences &preferences, const char *key, TemperatureCalibrationRecord &record)
-    {
-        return preferences.getBytesLength(key) == sizeof(record) &&
-               preferences.getBytes(key, &record, sizeof(record)) == sizeof(record) &&
-               temperatureCalibrationRecordValid(record);
-    }
+        size_t length(const char *key) override { return preferences.getBytesLength(key); }
+        size_t read(const char *key, void *value, size_t valueLength) override
+        {
+            return preferences.getBytes(key, value, valueLength);
+        }
+        size_t write(const char *key, const void *value, size_t valueLength) override
+        {
+            return preferences.putBytes(key, value, valueLength);
+        }
 
-    bool generationNewer(uint8_t candidate, uint8_t current)
-    {
-        return candidate != current && static_cast<uint8_t>(candidate - current) < 128U;
-    }
+    private:
+        Preferences &preferences;
+    };
 }
 
 void TemperatureProbeManager::loadCalibration()
@@ -54,23 +57,22 @@ void TemperatureProbeManager::loadCalibration()
     Preferences preferences;
     if (!preferences.begin(TEMP_PREF_NAMESPACE, false))
     {
+        storageSlot = "none";
+        storageLoadSucceeded = false;
         calibrationLoaded = true;
         return;
     }
 
-    TemperatureCalibrationRecord recordA;
-    TemperatureCalibrationRecord recordB;
-    TemperatureCalibrationRecord legacyRecord;
-    const bool recordAValid = readRecord(preferences, TEMP_PREF_RECORD_A, recordA);
-    const bool recordBValid = readRecord(preferences, TEMP_PREF_RECORD_B, recordB);
-    const bool legacyRecordValid = readRecord(preferences, TEMP_PREF_RECORD_V2, legacyRecord);
-    const TemperatureCalibrationRecord *selected = nullptr;
-    if (recordAValid) selected = &recordA;
-    if (recordBValid && (!selected || generationNewer(recordB.reserved, selected->reserved))) selected = &recordB;
-    if (!selected && legacyRecordValid) selected = &legacyRecord;
-    if (selected != nullptr)
+    PreferencesCalibrationBlobStorage storage(preferences);
+    SelectedCalibrationRecord selected = selectNewestCalibration(
+        storage, TEMP_PREF_RECORD_A, TEMP_PREF_RECORD_B);
+    if (!selected.found)
     {
-        const TemperatureCalibrationRecord &record = *selected;
+        selected = selectNewestCalibration(storage, TEMP_PREF_RECORD_V2, TEMP_PREF_RECORD_V2);
+    }
+    if (selected.found)
+    {
+        const TemperatureCalibrationRecord &record = selected.record;
         lowPoint.valid = (record.flags & TEMPERATURE_CALIBRATION_LOW_VALID) != 0;
         lowPoint.raw = record.lowRaw;
         lowPoint.tempC = lowPoint.valid ? record.lowTempC : NAN;
@@ -80,9 +82,11 @@ void TemperatureProbeManager::loadCalibration()
         trimOffset = record.trimOffsetC;
         enabled = (record.flags & TEMPERATURE_MONITORING_ENABLED) != 0;
         calibrationGeneration = record.reserved;
+        storageLoadSucceeded = true;
+        storageSlot = selected.key;
         preferences.end();
         calibrationLoaded = true;
-        if (!recordAValid && !recordBValid) persistCalibration();
+        if (storageSlot == TEMP_PREF_RECORD_V2) persistCalibration();
         return;
     }
 
@@ -97,6 +101,8 @@ void TemperatureProbeManager::loadCalibration()
     enabled = preferences.getBool(TEMP_PREF_ENABLED, true);
 
     preferences.end();
+    storageLoadSucceeded = false;
+    storageSlot = "legacy_keys";
     calibrationLoaded = true;
     // Migrate legacy keys without changing their values. The legacy mirror is
     // retained on future writes so downgrades remain safe.
@@ -108,34 +114,35 @@ bool TemperatureProbeManager::persistCalibration()
     Preferences preferences;
     if (!preferences.begin(TEMP_PREF_NAMESPACE, false))
     {
+        lastStorageWriteWasVerified = false;
         return false;
     }
 
-    preferences.putBool(TEMP_PREF_LOW_VALID, lowPoint.valid);
-    preferences.putInt(TEMP_PREF_LOW_RAW, lowPoint.raw);
-    preferences.putFloat(TEMP_PREF_LOW_TEMP, lowPoint.tempC);
-
-    preferences.putBool(TEMP_PREF_HIGH_VALID, highPoint.valid);
-    preferences.putInt(TEMP_PREF_HIGH_RAW, highPoint.raw);
-    preferences.putFloat(TEMP_PREF_HIGH_TEMP, highPoint.tempC);
-    preferences.putFloat(TEMP_PREF_TRIM_OFFSET, trimOffset);
-    preferences.putBool(TEMP_PREF_ENABLED, enabled);
-    TemperatureCalibrationRecord existingA;
-    TemperatureCalibrationRecord existingB;
-    const bool aValid = readRecord(preferences, TEMP_PREF_RECORD_A, existingA);
-    const bool bValid = readRecord(preferences, TEMP_PREF_RECORD_B, existingB);
-    if (aValid && generationNewer(existingA.reserved, calibrationGeneration)) calibrationGeneration = existingA.reserved;
-    if (bValid && generationNewer(existingB.reserved, calibrationGeneration)) calibrationGeneration = existingB.reserved;
-    calibrationGeneration = static_cast<uint8_t>(calibrationGeneration + 1U);
+    PreferencesCalibrationBlobStorage storage(preferences);
+    const SelectedCalibrationRecord selected = selectNewestCalibration(
+        storage, TEMP_PREF_RECORD_A, TEMP_PREF_RECORD_B);
+    const uint8_t nextGeneration = static_cast<uint8_t>(
+        (selected.found ? selected.record.reserved : calibrationGeneration) + 1U);
     const TemperatureCalibrationRecord record = makeTemperatureCalibrationRecord(
         lowPoint.valid, lowPoint.raw, lowPoint.tempC,
         highPoint.valid, highPoint.raw, highPoint.tempC,
-        trimOffset, enabled, calibrationGeneration);
-    const char *target = (!aValid || (bValid && generationNewer(existingB.reserved, existingA.reserved)))
+        trimOffset, enabled, nextGeneration);
+    const char *target = !selected.found || selected.key == TEMP_PREF_RECORD_B
                              ? TEMP_PREF_RECORD_A : TEMP_PREF_RECORD_B;
-    const bool recordSaved = preferences.putBytes(target, &record, sizeof(record)) == sizeof(record);
+    const bool recordSaved = writeVerifiedCalibration(storage, target, record);
+    lastStorageWriteWasVerified = recordSaved;
     if (recordSaved)
     {
+        calibrationGeneration = nextGeneration;
+        storageSlot = target;
+        preferences.putBool(TEMP_PREF_LOW_VALID, lowPoint.valid);
+        preferences.putInt(TEMP_PREF_LOW_RAW, lowPoint.raw);
+        preferences.putFloat(TEMP_PREF_LOW_TEMP, lowPoint.tempC);
+        preferences.putBool(TEMP_PREF_HIGH_VALID, highPoint.valid);
+        preferences.putInt(TEMP_PREF_HIGH_RAW, highPoint.raw);
+        preferences.putFloat(TEMP_PREF_HIGH_TEMP, highPoint.tempC);
+        preferences.putFloat(TEMP_PREF_TRIM_OFFSET, trimOffset);
+        preferences.putBool(TEMP_PREF_ENABLED, enabled);
         // Retain a single-slot v2 mirror for downgrade compatibility. Recovery
         // always prefers the independently checksummed A/B records.
         preferences.putBytes(TEMP_PREF_RECORD_V2, &record, sizeof(record));
@@ -191,6 +198,7 @@ void TemperatureProbeManager::maintain(unsigned long nowMs)
 {
     if (!enabled)
     {
+        probePresenceFilter.reset();
         probePresent = false;
         lastRawReading = -1;
         savedCurrentTemperatureRaw = -1;
@@ -207,14 +215,8 @@ void TemperatureProbeManager::maintain(unsigned long nowMs)
     const int raw = analogRead(TEMP_PROBE_ADC_PIN);
     lastRawReading = raw;
 
-    probePresent = isProbeInValidRange(raw);
-    if (probePresent)
-    {
-        savedCurrentTemperatureRaw = raw;
-        return;
-    }
-
-    savedCurrentTemperatureRaw = -1;
+    probePresent = probePresenceFilter.update(raw, enabled);
+    savedCurrentTemperatureRaw = probePresenceFilter.stableRaw();
 }
 
 bool TemperatureProbeManager::isPresent() const
@@ -230,13 +232,28 @@ bool TemperatureProbeManager::isEnabled() const
 bool TemperatureProbeManager::setEnabled(bool newEnabled, String &error)
 {
     loadCalibration();
+    const bool previousEnabled = enabled;
+    const uint8_t previousGeneration = calibrationGeneration;
+    const bool previousProbePresent = probePresent;
+    const int previousLastRawReading = lastRawReading;
+    const int previousSavedCurrentTemperatureRaw = savedCurrentTemperatureRaw;
+    const unsigned long previousLastSampleAtMs = lastSampleAtMs;
+    const ProbePresenceFilter previousProbePresenceFilter = probePresenceFilter;
     enabled = newEnabled;
     probePresent = false;
     lastRawReading = -1;
     savedCurrentTemperatureRaw = -1;
+    probePresenceFilter.reset();
     lastSampleAtMs = 0;
     if (!persistCalibration())
     {
+        enabled = previousEnabled;
+        calibrationGeneration = previousGeneration;
+        probePresent = previousProbePresent;
+        lastRawReading = previousLastRawReading;
+        savedCurrentTemperatureRaw = previousSavedCurrentTemperatureRaw;
+        lastSampleAtMs = previousLastSampleAtMs;
+        probePresenceFilter = previousProbePresenceFilter;
         error = "Failed to save temperature monitoring setting";
         return false;
     }
@@ -250,7 +267,7 @@ int TemperatureProbeManager::rawReading() const
 
 int TemperatureProbeManager::currentTemperatureRaw() const
 {
-    return savedCurrentTemperatureRaw;
+    return probePresenceFilter.stableRaw();
 }
 
 float TemperatureProbeManager::currentTemperatureC() const
@@ -304,6 +321,26 @@ float TemperatureProbeManager::trimOffsetC() const
     return trimOffset;
 }
 
+bool TemperatureProbeManager::storageLoadOk() const
+{
+    return storageLoadSucceeded;
+}
+
+bool TemperatureProbeManager::lastStorageWriteVerified() const
+{
+    return lastStorageWriteWasVerified;
+}
+
+const char *TemperatureProbeManager::selectedStorageSlot() const
+{
+    return storageSlot;
+}
+
+uint8_t TemperatureProbeManager::calibrationGenerationValue() const
+{
+    return calibrationGeneration;
+}
+
 bool TemperatureProbeManager::captureLow(float knownTempC, String &error)
 {
     loadCalibration();
@@ -325,12 +362,14 @@ bool TemperatureProbeManager::captureLow(float knownTempC, String &error)
     }
 
     const CalibrationPoint previousLow = lowPoint;
+    const uint8_t previousGeneration = calibrationGeneration;
     lowPoint.valid = true;
     lowPoint.raw = savedCurrentTemperatureRaw;
     lowPoint.tempC = knownTempC;
     if (!persistCalibration())
     {
         lowPoint = previousLow;
+        calibrationGeneration = previousGeneration;
         error = "Failed to persist low calibration point";
         return false;
     }
@@ -359,12 +398,14 @@ bool TemperatureProbeManager::captureHigh(float knownTempC, String &error)
     }
 
     const CalibrationPoint previousHigh = highPoint;
+    const uint8_t previousGeneration = calibrationGeneration;
     highPoint.valid = true;
     highPoint.raw = savedCurrentTemperatureRaw;
     highPoint.tempC = knownTempC;
     if (!persistCalibration())
     {
         highPoint = previousHigh;
+        calibrationGeneration = previousGeneration;
         error = "Failed to persist high calibration point";
         return false;
     }
@@ -398,11 +439,21 @@ bool TemperatureProbeManager::captureHighUsingSavedTemp(String &error)
 
 bool TemperatureProbeManager::resetCalibration(String &error)
 {
-    (void)error;
     loadCalibration();
+    const CalibrationPoint previousLow = lowPoint;
+    const CalibrationPoint previousHigh = highPoint;
+    const uint8_t previousGeneration = calibrationGeneration;
     lowPoint = {};
     highPoint = {};
-    return persistCalibration();
+    if (!persistCalibration())
+    {
+        lowPoint = previousLow;
+        highPoint = previousHigh;
+        calibrationGeneration = previousGeneration;
+        error = "Failed to persist calibration reset";
+        return false;
+    }
+    return true;
 }
 
 bool TemperatureProbeManager::setTrimOffsetC(float offsetC, String &error)
@@ -415,9 +466,13 @@ bool TemperatureProbeManager::setTrimOffsetC(float offsetC, String &error)
         return false;
     }
 
+    const float previousTrim = trimOffset;
+    const uint8_t previousGeneration = calibrationGeneration;
     trimOffset = offsetC;
     if (!persistCalibration())
     {
+        trimOffset = previousTrim;
+        calibrationGeneration = previousGeneration;
         error = "Failed to persist trim offset";
         return false;
     }
@@ -451,6 +506,12 @@ bool TemperatureProbeManager::restoreCalibration(
     const CalibrationPoint previousHigh = highPoint;
     const float previousTrim = trimOffset;
     const bool previousEnabled = enabled;
+    const uint8_t previousGeneration = calibrationGeneration;
+    const bool previousProbePresent = probePresent;
+    const int previousLastRawReading = lastRawReading;
+    const int previousSavedCurrentTemperatureRaw = savedCurrentTemperatureRaw;
+    const unsigned long previousLastSampleAtMs = lastSampleAtMs;
+    const ProbePresenceFilter previousProbePresenceFilter = probePresenceFilter;
     lowPoint.valid = true;
     lowPoint.raw = lowRaw;
     lowPoint.tempC = lowTempC;
@@ -459,12 +520,26 @@ bool TemperatureProbeManager::restoreCalibration(
     highPoint.tempC = highTempC;
     trimOffset = newTrimOffsetC;
     enabled = monitoringEnabled;
+    if (!enabled)
+    {
+        probePresent = false;
+        lastRawReading = -1;
+        savedCurrentTemperatureRaw = -1;
+        lastSampleAtMs = 0;
+        probePresenceFilter.reset();
+    }
     if (!persistCalibration())
     {
         lowPoint = previousLow;
         highPoint = previousHigh;
         trimOffset = previousTrim;
         enabled = previousEnabled;
+        calibrationGeneration = previousGeneration;
+        probePresent = previousProbePresent;
+        lastRawReading = previousLastRawReading;
+        savedCurrentTemperatureRaw = previousSavedCurrentTemperatureRaw;
+        lastSampleAtMs = previousLastSampleAtMs;
+        probePresenceFilter = previousProbePresenceFilter;
         error = "Failed to persist restored calibration";
         return false;
     }
