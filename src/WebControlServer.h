@@ -50,6 +50,8 @@ struct WebControlContext
     ScheduleManager *schedule = nullptr;
     OtaUpdateManager *ota = nullptr;
     HostnameGetter getHostname = nullptr;
+    // Read-only snapshot provider, deliberately separate from enrollment callbacks.
+    String (*getManifest)() = nullptr;
     HostnameSetter setHostname = nullptr;
     MqttClientIdGetter getMqttClientId = nullptr;
     NvsHealthGetter getNvsHealth = nullptr;
@@ -133,6 +135,7 @@ private:
     void handleLedBootAnimation();
     void handleSetHostname();
     void handleUnifiedHello();
+    void handleUnifiedManifest();
     void handleNotFound();
 
     void sendError(int statusCode, const char *error);

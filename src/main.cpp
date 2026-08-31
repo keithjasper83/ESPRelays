@@ -6,6 +6,8 @@
 
 #include <Arduino.h>
 #include <ESPmDNS.h>
+#include <UnifiedMdns.h>
+#include "RelayManifest.h"
 #include <Preferences.h>
 #include <WiFi.h>
 #include <esp_bt.h>
@@ -536,6 +538,7 @@ bool updateDeviceHostname(const String &requested, String &error)
         if (MDNS.begin(deviceHostname.c_str()))
         {
             MDNS.addService("http", "tcp", 80);
+            kjunified::advertise(MDNS, 80);
             mdnsStarted = true;
             Serial.print("mDNS restarted: http://");
             Serial.print(deviceHostname);
@@ -633,6 +636,49 @@ String getUnifiedCalibrationJson()
     json += temperatureProbeManager.isEnabled() ? "true" : "false";
     json += "}";
     return json;
+}
+
+// Snapshot existing managers only. Discovery must not enroll, write NVS or execute commands.
+String getUnifiedManifestJson()
+{
+    RelayManifestSnapshot snapshot;
+    snapshot.hardwareId = kjunified::factoryHardwareId();
+    snapshot.name = deviceHostname.c_str();
+    String legacyMac = WiFi.macAddress();
+    legacyMac.toLowerCase();
+    legacyMac.replace(":", "");
+    snapshot.legacyDeviceId = ("esp32-" + deviceHostname + "-" + legacyMac).c_str();
+    snapshot.firmwareVersion = FIRMWARE_VERSION;
+    snapshot.firmwareReleaseDate = FIRMWARE_RELEASE_DATE;
+    snapshot.relayOn = relayController.isOn();
+    snapshot.autoOffMinutes = relayController.autoOffMinutes();
+    snapshot.probePresent = temperatureProbeManager.isPresent();
+    snapshot.monitoringEnabled = temperatureProbeManager.isEnabled();
+    snapshot.calibrationReady = temperatureProbeManager.calibrationReady();
+    snapshot.temperatureC = temperatureProbeManager.currentTemperatureC();
+    snapshot.rawTemperature = temperatureProbeManager.rawReading();
+    snapshot.lowValid = temperatureProbeManager.lowPointValid();
+    snapshot.highValid = temperatureProbeManager.highPointValid();
+    snapshot.lowRaw = temperatureProbeManager.lowPointRaw();
+    snapshot.highRaw = temperatureProbeManager.highPointRaw();
+    snapshot.lowC = temperatureProbeManager.lowPointTempC();
+    snapshot.highC = temperatureProbeManager.highPointTempC();
+    snapshot.trimC = temperatureProbeManager.trimOffsetC();
+    snapshot.relayPin = RELAY_PIN;
+    snapshot.temperaturePin = TEMP_PROBE_ADC_PIN;
+    snapshot.relayLedPin = RELAY_LED_PIN;
+    snapshot.wifiLedPin = WIFI_LED_PIN;
+    snapshot.stripPin = LED_STRIP_PIN;
+    snapshot.stripCount = LED_STRIP_COUNT;
+    snapshot.discreteLedsEnabled = DISCRETE_STATUS_LEDS_ENABLED;
+    snapshot.wifiConnected = wifiManager.isConnected();
+    snapshot.mqttConnected = mqttManager.isConnected();
+    snapshot.timeValid = timeSyncManager.isTimeValid();
+    snapshot.uptimeSeconds = (millis() - bootTime) / 1000;
+    auto manifest = buildRelayManifest(snapshot);
+    kjunified::Text body, error;
+    if (!manifest.serialize(body, error)) return String();
+    return body;
 }
 
 String getUnifiedRegistrationJson()
@@ -790,6 +836,7 @@ void maintainMdns()
             if (MDNS.begin(deviceHostname.c_str()))
             {
                 MDNS.addService("http", "tcp", 80);
+                kjunified::advertise(MDNS, 80);
                 mdnsStarted = true;
                 Serial.print("mDNS started: http://");
                 Serial.print(deviceHostname);
@@ -1345,6 +1392,7 @@ void setup()
     webContext.schedule = &scheduleManager;
     webContext.ota = &otaUpdateManager;
     webContext.getHostname = getDeviceHostname;
+    webContext.getManifest = getUnifiedManifestJson;
     webContext.setHostname = updateDeviceHostname;
     webContext.getMqttClientId = getMqttClientId;
     webContext.getNvsHealth = getNvsHealth;

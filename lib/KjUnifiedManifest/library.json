@@ -1,0 +1,8 @@
+{
+  "name": "KjUnifiedManifest",
+  "version": "1.0.0",
+  "description": "Read-only recursive capability manifests and additive ESP32 mDNS advertisement",
+  "frameworks": "*",
+  "platforms": "*",
+  "dependencies": {"bblanchon/ArduinoJson": "^7.2.1"}
+}

@@ -8,6 +8,7 @@
 
 #include <Arduino.h>
 #include <WebServer.h>
+#include <ManifestHttp.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -2362,10 +2363,19 @@ void WebControlServer::registerRoutes()
               { handleWifiScan(); });
   gServer.on("/hostname", HTTP_POST, [this]()
               { handleSetHostname(); });
+  gServer.on("/unified/manifest", HTTP_GET, [this]()
+              { handleUnifiedManifest(); });
   gServer.on("/unified/hello", HTTP_GET, [this]()
               { handleUnifiedHello(); });
   gServer.onNotFound([this]()
                       { handleNotFound(); });
+}
+
+void WebControlServer::handleUnifiedManifest()
+{
+  kjunified::serveManifest(gServer, [this]() {
+    return context.getManifest != nullptr ? context.getManifest() : String();
+  });
 }
 
 void WebControlServer::handleUnifiedHello()

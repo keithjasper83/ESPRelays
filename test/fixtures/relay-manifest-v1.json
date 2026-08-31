@@ -1,0 +1,21 @@
+{
+  "protocol": "kj-esp-unified",
+  "protocol_version": 1,
+  "schema_version": 1,
+  "manifest_revision": "relay-1",
+  "hardware": {"id": "esp32-10003bba8d4c", "model": "esp32-c3"},
+  "firmware": {"name": "esp-relay-controller", "version": "4.1.0", "release_date": "2026-08-16"},
+  "legacy_device_id": "esp32-water-10003bba8d4c",
+  "name": "water",
+  "capabilities": [
+    {"key": "outputs", "type": "group", "label": "Outputs", "access": "read", "available": true, "children": [
+      {"key": "relay", "type": "relay", "label": "Relay", "access": "read_write", "available": true, "state": false, "commands": ["on", "off", "toggle"], "metadata": {"gpio": 5}}
+    ]},
+    {"key": "sensors", "type": "group", "label": "Sensors", "access": "read", "available": true, "children": [
+      {"key": "temperature", "type": "temperature_sensor", "label": "Temperature", "access": "read", "available": false, "state": null, "unit": "°C", "metadata": {"calibration_ready": false}}
+    ]},
+    {"key": "status", "type": "group", "label": "Status", "access": "read", "available": true, "children": [
+      {"key": "restart", "type": "action", "label": "Restart", "access": "action", "available": true, "commands": ["restart"]}
+    ]}
+  ]
+}
