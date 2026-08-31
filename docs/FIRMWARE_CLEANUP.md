@@ -70,6 +70,17 @@ history and global toolchain caches.
 
 ## Verification
 
+### Combined main integration (2026-08-31)
+
+The subsequent merge also preserves `codex/relay-recovery`: reset diagnostics,
+brownout-only relay OFF recovery, and verified A/B calibration persistence.
+The combined ESP32-C3 image measures **1,251,600 bytes**, leaving **59,120 bytes**
+in the unchanged 1,310,720-byte OTA slot. This is 58,048 bytes smaller than the
+pre-cleanup image above. The native suite now contains 67 passing tests.
+These are build and host-test measurements; no controller was flashed.
+
+### Cleanup-only verification
+
 - Clean device build plus actual binary/partition guard; no upload.
 - 41 native C++ tests; six Python build/partition checks; five embedded-console
   Node tests. Command router/device-command line coverage: 90.8% (118/130).
