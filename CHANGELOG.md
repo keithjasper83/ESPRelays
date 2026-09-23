@@ -1,5 +1,22 @@
 # Changelog
 
+## v4.2.1 - 2026-09-23
+
+- docs: record combined recovery firmware image size (3baa839)
+- merge: preserve brownout and calibration safeguards in MQTT-free firmware (8b8f346)
+- refactor(firmware): retire MQTT and disconnected LED support (9bd6391)
+- feat(discovery): advertise relay capability manifests over mDNS (009d586)
+- fix(firmware): finalize relay recovery safeguards (1f3bd79)
+- docs(release): describe relay recovery safeguards (4956205)
+- test(status): cover local recovery diagnostics (bc26782)
+- feat(status): expose reset and storage diagnostics (11e63c7)
+- fix(relay): force off after confirmed brownout (ebd38d7)
+- test(temperature): cover calibration rollback (4f51471)
+- fix(temperature): verify calibration writes (34207af)
+- fix(temperature): debounce probe presence detection (7015052)
+- Merge branch 'main' of https://github.com/keithjasper83/ESPRelays (914c5d8)
+- feat: Update document title with mDNS host in WebControlServer (5782e19)
+
 ## v4.1.0 - 2026-08-16
 
 - fix(calibration): reject invalid reference pairs (f7219f1)
