@@ -1,5 +1,9 @@
 # Changelog
 
+## v4.2.4 - 2026-09-23
+
+Add OTA command routing over ESP-NOW with relay support.
+
 ## v4.2.1 - 2026-09-23
 
 - docs: record combined recovery firmware image size (3baa839)
