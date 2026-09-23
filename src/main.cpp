@@ -16,6 +16,7 @@
 #include <ctype.h>
 #include <time.h>
 #include <esp32-hal-cpu.h>
+#include <ArduinoJson.h>
 
 #include "AppConfig.h"
 #include "ButtonManager.h"
@@ -31,6 +32,7 @@
 #include "WebControlServer.h"
 #include "UnifiedServerClient.h"
 #include "WiFiManager.h"
+#include "discovery/espnow_discovery_bridge.h"
 #include "discovery/udp_discovery.h"
 
 bool debugLogging = false;
@@ -42,6 +44,7 @@ CommandRouter commandRouter;
 DeviceCommandContext commandContext;
 WebControlServer webControlServer;
 UdpDiscovery udpDiscovery;
+EspNowDiscoveryBridge espNowDiscoveryBridge;
 TimeSyncManager timeSyncManager;
 ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
@@ -137,6 +140,7 @@ void maintainMdns();
 void loadDeviceHostname();
 void saveDeviceHostname(const String &hostname);
 String getDiscoveryDeviceName();
+String getDiscoveryDeviceId();
 String getDiscoveryDeviceType();
 String getDiscoveryFirmwareName();
 String getDiscoveryFirmwareVersion();
@@ -188,6 +192,10 @@ bool handleUnifiedCalibration(JsonObjectConst values, String &error);
 void scheduleUnifiedRestart();
 bool configureUnifiedServer(const String &serverUrl, String &error);
 void handleUnifiedServerDiscovered(const String &serverUrl, const String &websocketUrl);
+bool getRelayIsOn();
+bool getDiscoveryWifiConnected();
+int getDiscoveryWifiRssi();
+void handleEspNowPeerPayload(const String &payload);
 
 String sanitizeHostname(const String &requested)
 {
@@ -240,6 +248,7 @@ void debugPrint(const char *msg)
 void onRelayStateChanged(bool state)
 {
     udpDiscovery.advertiseNow();
+    espNowDiscoveryBridge.advertiseNow();
     unifiedServerClient.publishState();
 }
 
@@ -813,6 +822,70 @@ String getDiscoveryModel()
     return "esp32-c3";
 }
 
+String getDiscoveryDeviceId()
+{
+    String mac = WiFi.macAddress();
+    mac.toLowerCase();
+    mac.replace(":", "");
+
+    String host = getDeviceHostname();
+    host.toLowerCase();
+
+    String deviceId = "esp32-";
+    deviceId += host;
+    deviceId += "-";
+    deviceId += mac;
+    return deviceId;
+}
+
+bool getRelayIsOn()
+{
+    return relayController.isOn();
+}
+
+bool getDiscoveryWifiConnected()
+{
+    return wifiManager.isConnected();
+}
+
+int getDiscoveryWifiRssi()
+{
+    if (!wifiManager.isConnected())
+    {
+        return 0;
+    }
+    return WiFi.RSSI();
+}
+
+void handleEspNowPeerPayload(const String &payload)
+{
+    if (!wifiManager.isConnected())
+    {
+        return;
+    }
+
+    JsonDocument peerDoc;
+    const DeserializationError err = deserializeJson(peerDoc, payload);
+    if (err)
+    {
+        return;
+    }
+
+    JsonDocument proxiedDoc;
+    proxiedDoc["protocol"] = "kj-esp-discovery";
+    proxiedDoc["protocol_version"] = 1;
+    proxiedDoc["transport"] = "udp-proxy";
+    proxiedDoc["via"] = "espnow";
+    proxiedDoc["proxied"] = true;
+    proxiedDoc["gateway_hostname"] = getDeviceHostname();
+    proxiedDoc["gateway_ip"] = WiFi.localIP().toString();
+    proxiedDoc["peer"] = peerDoc.as<JsonVariantConst>();
+
+    String proxiedPayload;
+    serializeJson(proxiedDoc, proxiedPayload);
+    udpDiscovery.advertisePeerPayload(proxiedPayload);
+}
+
 void maintainMdns()
 {
     if (wifiManager.isConnected())
@@ -1344,6 +1417,18 @@ void setup()
     discoveryConfig.unifiedServerDiscovered = handleUnifiedServerDiscovered;
     udpDiscovery.begin(discoveryConfig);
 
+    EspNowDiscoveryBridgeConfig espNowConfig;
+    espNowConfig.advertiseIntervalMs = 7000;
+    espNowConfig.deviceIdProvider = getDiscoveryDeviceId;
+    espNowConfig.deviceNameProvider = getDiscoveryDeviceName;
+    espNowConfig.hostnameProvider = getDeviceHostname;
+    espNowConfig.firmwareVersionProvider = getDiscoveryFirmwareVersion;
+    espNowConfig.relayOnProvider = getRelayIsOn;
+    espNowConfig.wifiConnectedProvider = getDiscoveryWifiConnected;
+    espNowConfig.wifiRssiProvider = getDiscoveryWifiRssi;
+    espNowConfig.peerPayloadReceived = handleEspNowPeerPayload;
+    espNowDiscoveryBridge.begin(espNowConfig);
+
     unifiedServerClient.begin(getUnifiedRegistrationJson, getUnifiedStateJson, handleUnifiedCommand,
                               getUnifiedSettingsJson, handleUnifiedSettings,
                               getUnifiedCalibrationJson, handleUnifiedCalibration, scheduleUnifiedRestart);
@@ -1364,6 +1449,7 @@ void loop()
     webControlServer.handleClient();
     temperatureProbeManager.maintain(millis());
     udpDiscovery.loop(wifiManager.isConnected());
+    espNowDiscoveryBridge.loop();
     unifiedServerClient.maintain(wifiManager.isConnected());
     if (unifiedRestartPending && static_cast<long>(millis() - unifiedRestartAtMs) >= 0)
     {
@@ -1373,6 +1459,7 @@ void loop()
     if (wifiManager.isConnected() && !lastDiscoveryWifiConnected)
     {
         udpDiscovery.advertiseNow();
+        espNowDiscoveryBridge.advertiseNow();
     }
 
     lastDiscoveryWifiConnected = wifiManager.isConnected();

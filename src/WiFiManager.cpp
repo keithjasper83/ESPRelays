@@ -7,6 +7,7 @@
 #include "WiFiManager.h"
 
 #include <esp_wifi.h>
+#include <cstring>
 #include <Preferences.h>
 
 #include "AppConfig.h"
@@ -71,14 +72,58 @@ namespace
             return "WIFI_REASON_NOT_ASSOCED";
         case WIFI_REASON_ASSOC_LEAVE:
             return "WIFI_REASON_ASSOC_LEAVE";
+        case 9:
+            return "WIFI_REASON_ASSOC_NOT_AUTHED";
+        case 10:
+            return "WIFI_REASON_DISASSOC_PWRCAP_BAD";
+        case 11:
+            return "WIFI_REASON_DISASSOC_SUPCHAN_BAD";
+        case 13:
+            return "WIFI_REASON_IE_INVALID";
+        case 14:
+            return "WIFI_REASON_MIC_FAILURE";
+        case 15:
+            return "WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT";
+        case 16:
+            return "WIFI_REASON_GROUP_KEY_UPDATE_TIMEOUT";
+        case 17:
+            return "WIFI_REASON_IE_IN_4WAY_DIFFERS";
+        case 18:
+            return "WIFI_REASON_GROUP_CIPHER_INVALID";
+        case 19:
+            return "WIFI_REASON_PAIRWISE_CIPHER_INVALID";
+        case 20:
+            return "WIFI_REASON_AKMP_INVALID";
+        case 21:
+            return "WIFI_REASON_UNSUPP_RSN_IE_VERSION";
+        case 22:
+            return "WIFI_REASON_INVALID_RSN_IE_CAP";
+        case 23:
+            return "WIFI_REASON_802_1X_AUTH_FAILED";
+        case 24:
+            return "WIFI_REASON_CIPHER_SUITE_REJECTED";
+        case 39:
+            return "WIFI_REASON_TIMEOUT";
         case WIFI_REASON_AUTH_FAIL:
             return "WIFI_REASON_AUTH_FAIL";
         case WIFI_REASON_BEACON_TIMEOUT:
             return "WIFI_REASON_BEACON_TIMEOUT";
         case WIFI_REASON_NO_AP_FOUND:
             return "WIFI_REASON_NO_AP_FOUND";
+        case 210:
+            return "WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY";
+        case 211:
+            return "WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD";
+        case 212:
+            return "WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD";
+        case 203:
+            return "WIFI_REASON_ASSOC_FAIL";
+        case 205:
+            return "WIFI_REASON_CONNECTION_FAIL";
         case WIFI_REASON_HANDSHAKE_TIMEOUT:
             return "WIFI_REASON_HANDSHAKE_TIMEOUT";
+        case 207:
+            return "WIFI_REASON_ROAMING";
         default:
             return "UNKNOWN_WIFI_REASON";
         }
@@ -103,8 +148,13 @@ namespace
         Serial.println("***** WIFI DISCONNECTED *****");
         Serial.print("Reason code: ");
         Serial.println((int)reason);
+        const char *reasonName = wifiDisconnectReasonName(reason);
         Serial.print("Reason name: ");
-        Serial.println(wifiDisconnectReasonName(reason));
+        Serial.println(reasonName);
+        if (strcmp(reasonName, "UNKNOWN_WIFI_REASON") == 0)
+        {
+            Serial.println("Hint: reason is not mapped in this firmware/SDK build.");
+        }
         Serial.print("Target SSID: ");
         Serial.println(gLastWifiTargetSsid.length() > 0 ? gLastWifiTargetSsid : WiFi.SSID());
         Serial.print("Credential source: ");
@@ -254,6 +304,10 @@ void WiFiManager::printFullDetails() const
     Serial.println(WiFi.dnsIP(0));
     Serial.print("DNS 2: ");
     Serial.println(WiFi.dnsIP(1));
+    Serial.print("Last disconnect reason code: ");
+    Serial.println((int)gLastWifiDisconnectReason);
+    Serial.print("Last disconnect reason name: ");
+    Serial.println(wifiDisconnectReasonName(gLastWifiDisconnectReason));
 
     wifi_mode_t mode;
     esp_wifi_get_mode(&mode);

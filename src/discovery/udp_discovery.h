@@ -44,6 +44,7 @@ public:
     void begin(const DiscoveryConfig &config);
     void loop(bool wifiConnected);
     void advertiseNow();
+    bool advertisePeerPayload(const String &payload);
 
 private:
     String buildPayload() const;

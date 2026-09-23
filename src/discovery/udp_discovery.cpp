@@ -111,6 +111,16 @@ void UdpDiscovery::advertiseNow()
     pendingAdvertise = true;
 }
 
+bool UdpDiscovery::advertisePeerPayload(const String &payload)
+{
+    if (!configured || !transportReady)
+    {
+        return false;
+    }
+
+    return sendPayload(payload);
+}
+
 String UdpDiscovery::jsonEscape(const String &input)
 {
     String escaped;
