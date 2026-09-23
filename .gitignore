@@ -12,3 +12,4 @@ src/AppConfig.local.h
 .env.*
 __pycache__/
 *.py[cod]
+.github/.DS_Store
