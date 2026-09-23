@@ -11,12 +11,12 @@ permissions:
 
 jobs:
   build-and-test:
-    # Optional override via repository variable CI_RUNNER.
+    # Self-hosted by default. Optional override via repository variable CI_RUNNER.
     # Examples:
     #   ["self-hosted","linux"]
     #   ["self-hosted","macOS"]
-    # Leave CI_RUNNER unset to use GitHub-hosted Ubuntu.
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'ubuntu-latest' }}
+    # Leave CI_RUNNER unset to use generic self-hosted.
+    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'self-hosted' }}
 
     steps:
       - name: Checkout
