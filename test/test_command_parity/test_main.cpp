@@ -31,6 +31,7 @@ namespace
     int gStatusCalls = 0;
     int gTempLowCaptureCalls = 0;
     int gTempHighCaptureCalls = 0;
+    int gRebootCalls = 0;
 
     bool gPerformUpdateResult = false;
 
@@ -77,6 +78,11 @@ namespace
     {
         gTempHighCaptureCalls++;
         return true;
+    }
+
+    void rebootStub()
+    {
+        gRebootCalls++;
     }
 }
 
@@ -150,6 +156,7 @@ void setUp()
     gStatusCalls = 0;
     gTempLowCaptureCalls = 0;
     gTempHighCaptureCalls = 0;
+    gRebootCalls = 0;
     gPerformUpdateResult = false;
     ESP.restarted = false;
 }
@@ -170,12 +177,13 @@ void test_device_commands_dispatch_and_aliases_work()
     context.wifi = &wifi;
     context.ota = &ota;
     context.printStatus = printStatusStub;
+    context.requestReboot = rebootStub;
     context.captureTempLow = captureTempLowStub;
     context.captureTempHigh = captureTempHighStub;
 
     DeviceCommands::begin(router, context);
 
-    TEST_ASSERT_EQUAL(12u, router.count());
+    TEST_ASSERT_EQUAL(13u, router.count());
 
     TEST_ASSERT_TRUE(router.dispatch("on"));
     TEST_ASSERT_TRUE(gRelayState);
@@ -207,6 +215,12 @@ void test_device_commands_dispatch_and_aliases_work()
 
     TEST_ASSERT_TRUE(router.dispatch("help"));
 
+    TEST_ASSERT_TRUE(router.dispatch("reboot"));
+    TEST_ASSERT_EQUAL(1, gRebootCalls);
+
+    TEST_ASSERT_TRUE(router.dispatch("restart"));
+    TEST_ASSERT_EQUAL(2, gRebootCalls);
+
     TEST_ASSERT_TRUE(router.dispatch("temp-capture-low"));
     TEST_ASSERT_EQUAL(1, gTempLowCaptureCalls);
 
@@ -226,6 +240,7 @@ void test_ota_update_success_restarts_device()
     context.wifi = &wifi;
     context.ota = &ota;
     context.printStatus = printStatusStub;
+    context.requestReboot = rebootStub;
     context.captureTempLow = captureTempLowStub;
     context.captureTempHigh = captureTempHighStub;
 

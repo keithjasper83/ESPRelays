@@ -21,6 +21,7 @@ namespace
     const char *const TOGGLE_ALIASES[] = {"t"};
     const char *const STATE_ALIASES[] = {"status", "?"};
     const char *const HELP_ALIASES[] = {"h", "commands"};
+    const char *const REBOOT_ALIASES[] = {"restart", "reboot-now"};
     const char *const OTA_CHECK_ALIASES[] = {"check-update", "update-check"};
     const char *const OTA_UPDATE_ALIASES[] = {"update", "fwupdate"};
     const char *const TEMP_CAPTURE_LOW_ALIASES[] = {"temp-low"};
@@ -78,6 +79,18 @@ namespace
         {
             gRouter->printHelp(Serial);
         }
+    }
+
+    void handleReboot(const String &command)
+    {
+        (void)command;
+        if (gContext == nullptr || gContext->requestReboot == nullptr)
+        {
+            Serial.println("Reboot handler is unavailable.");
+            return;
+        }
+
+        gContext->requestReboot();
     }
 
     void handleOtaCheck(const String &command)
@@ -176,6 +189,7 @@ void DeviceCommands::begin(CommandRouter &router, DeviceCommandContext &context)
     router.registerCommand({"wifi", nullptr, 0, "print full Wi-Fi details", handleWifi});
     router.registerCommand({"scan", nullptr, 0, "scan and print nearby Wi-Fi networks", handleScan});
     router.registerCommand({"reconnect", nullptr, 0, "force a Wi-Fi reconnect", handleReconnect});
+    router.registerCommand({"reboot", REBOOT_ALIASES, sizeof(REBOOT_ALIASES) / sizeof(REBOOT_ALIASES[0]), "restart the device and run OTA check after boot", handleReboot});
     router.registerCommand({"ota-check", OTA_CHECK_ALIASES, sizeof(OTA_CHECK_ALIASES) / sizeof(OTA_CHECK_ALIASES[0]), "check for a newer OTA release", handleOtaCheck});
     router.registerCommand({"ota-update", OTA_UPDATE_ALIASES, sizeof(OTA_UPDATE_ALIASES) / sizeof(OTA_UPDATE_ALIASES[0]), "download and install latest OTA release", handleOtaUpdate});
     router.registerCommand({"temp-capture-low", TEMP_CAPTURE_LOW_ALIASES, sizeof(TEMP_CAPTURE_LOW_ALIASES) / sizeof(TEMP_CAPTURE_LOW_ALIASES[0]), "capture low calibration using saved low temperature", handleTempCaptureLow});

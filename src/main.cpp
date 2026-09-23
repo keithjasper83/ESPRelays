@@ -64,6 +64,10 @@ bool otaAutoScheduleEnabled = true;
 bool otaAutoScheduleNvsReady = false;
 DeviceResetReason bootResetReason = DeviceResetReason::Unknown;
 uint32_t brownoutCount = 0;
+bool rebootPending = false;
+unsigned long rebootAtMs = 0;
+bool bootOtaCheckPending = true;
+bool bootOtaCheckAttempted = false;
 
 namespace
 {
@@ -196,6 +200,8 @@ bool getRelayIsOn();
 bool getDiscoveryWifiConnected();
 int getDiscoveryWifiRssi();
 void handleEspNowPeerPayload(const String &payload);
+void requestRebootCommand();
+void maybeRunBootOtaCheck();
 
 String sanitizeHostname(const String &requested)
 {
@@ -372,6 +378,43 @@ void handleResetButtonPress()
     Serial.println("Reset button pressed. Restarting ESP32...");
     delay(100);
     ESP.restart();
+}
+
+void requestRebootCommand()
+{
+    rebootPending = true;
+    rebootAtMs = millis() + 250UL;
+    Serial.println("Reboot command accepted. Restarting...");
+}
+
+void maybeRunBootOtaCheck()
+{
+    if (!bootOtaCheckPending || bootOtaCheckAttempted)
+    {
+        return;
+    }
+
+    if (!wifiManager.isConnected())
+    {
+        return;
+    }
+
+    bootOtaCheckAttempted = true;
+    const OtaCheckResult result = otaUpdateManager.checkForUpdate();
+
+    Serial.print("[BOOT OTA CHECK] ");
+    Serial.println(result.ok ? "ok" : "failed");
+    if (result.latestVersion.length() > 0)
+    {
+        Serial.print("[BOOT OTA CHECK] latest=");
+        Serial.println(result.latestVersion);
+    }
+    Serial.print("[BOOT OTA CHECK] update_available=");
+    Serial.println(result.updateAvailable ? "yes" : "no");
+    Serial.print("[BOOT OTA CHECK] message=");
+    Serial.println(result.message);
+
+    bootOtaCheckPending = false;
 }
 
 void printStatus()
@@ -1335,6 +1378,7 @@ void setup()
     commandContext.wifi = &wifiManager;
     commandContext.ota = &otaUpdateManager;
     commandContext.printStatus = printStatus;
+    commandContext.requestReboot = requestRebootCommand;
     commandContext.captureTempLow = captureTempLowFromSaved;
     commandContext.captureTempHigh = captureTempHighFromSaved;
 
@@ -1451,7 +1495,12 @@ void loop()
     udpDiscovery.loop(wifiManager.isConnected());
     espNowDiscoveryBridge.loop();
     unifiedServerClient.maintain(wifiManager.isConnected());
+    maybeRunBootOtaCheck();
     if (unifiedRestartPending && static_cast<long>(millis() - unifiedRestartAtMs) >= 0)
+    {
+        ESP.restart();
+    }
+    if (rebootPending && static_cast<long>(millis() - rebootAtMs) >= 0)
     {
         ESP.restart();
     }
