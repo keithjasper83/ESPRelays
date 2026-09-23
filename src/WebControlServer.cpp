@@ -2506,6 +2506,37 @@ void WebControlServer::handleOtaCheck()
 {
   Serial.println("[HTTP] OTA check");
 
+  const String targetDeviceId = gServer.arg("target_device_id");
+  if (targetDeviceId.length() > 0)
+  {
+    if (context.triggerEspNowOta == nullptr)
+    {
+      sendError(500, "ESP-NOW OTA relay is unavailable");
+      return;
+    }
+
+    String commandId;
+    String error;
+    if (!context.triggerEspNowOta(false, targetDeviceId, commandId, error))
+    {
+      String json = "{\"ok\":false,\"relay\":\"espnow\",\"target\":\"";
+      json += jsonEscape(targetDeviceId);
+      json += "\",\"message\":\"";
+      json += jsonEscape(error);
+      json += "\"}";
+      gServer.send(400, "application/json", json);
+      return;
+    }
+
+    String json = "{\"ok\":true,\"relay\":\"espnow\",\"queued\":true,\"target\":\"";
+    json += jsonEscape(targetDeviceId);
+    json += "\",\"command_id\":\"";
+    json += jsonEscape(commandId);
+    json += "\",\"message\":\"OTA check request sent to peer\"}";
+    gServer.send(200, "application/json", json);
+    return;
+  }
+
   if (context.ota == nullptr)
   {
     sendError(500, "OTA manager unavailable");
@@ -2543,6 +2574,37 @@ void WebControlServer::handleOtaCheck()
 void WebControlServer::handleOtaUpdate()
 {
   Serial.println("[HTTP] OTA update");
+
+  const String targetDeviceId = gServer.arg("target_device_id");
+  if (targetDeviceId.length() > 0)
+  {
+    if (context.triggerEspNowOta == nullptr)
+    {
+      sendError(500, "ESP-NOW OTA relay is unavailable");
+      return;
+    }
+
+    String commandId;
+    String error;
+    if (!context.triggerEspNowOta(true, targetDeviceId, commandId, error))
+    {
+      String json = "{\"ok\":false,\"relay\":\"espnow\",\"target\":\"";
+      json += jsonEscape(targetDeviceId);
+      json += "\",\"message\":\"";
+      json += jsonEscape(error);
+      json += "\"}";
+      gServer.send(400, "application/json", json);
+      return;
+    }
+
+    String json = "{\"ok\":true,\"relay\":\"espnow\",\"queued\":true,\"target\":\"";
+    json += jsonEscape(targetDeviceId);
+    json += "\",\"command_id\":\"";
+    json += jsonEscape(commandId);
+    json += "\",\"message\":\"OTA update request sent to peer\"}";
+    gServer.send(200, "application/json", json);
+    return;
+  }
 
   if (context.ota == nullptr)
   {

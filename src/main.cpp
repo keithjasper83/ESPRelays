@@ -200,6 +200,11 @@ bool getRelayIsOn();
 bool getDiscoveryWifiConnected();
 int getDiscoveryWifiRssi();
 void handleEspNowPeerPayload(const String &payload);
+bool handleEspNowOtaCheck(String &latestVersion, bool &updateAvailable, String &message);
+bool handleEspNowOtaUpdate(String &message);
+void handleEspNowOtaResult(const String &commandId, bool install, bool ok, bool updateAvailable,
+                           const String &latestVersion, const String &message);
+bool triggerEspNowOta(bool install, const String &targetDeviceId, String &commandId, String &error);
 void requestRebootCommand();
 void maybeRunBootOtaCheck();
 
@@ -929,6 +934,58 @@ void handleEspNowPeerPayload(const String &payload)
     udpDiscovery.advertisePeerPayload(proxiedPayload);
 }
 
+bool handleEspNowOtaCheck(String &latestVersion, bool &updateAvailable, String &message)
+{
+    const OtaCheckResult result = otaUpdateManager.checkForUpdate();
+    latestVersion = result.latestVersion;
+    updateAvailable = result.updateAvailable;
+    message = result.message;
+    return result.ok;
+}
+
+bool handleEspNowOtaUpdate(String &message)
+{
+    return otaUpdateManager.performUpdate(message);
+}
+
+void handleEspNowOtaResult(const String &commandId, const bool install, const bool ok,
+                           const bool updateAvailable, const String &latestVersion, const String &message)
+{
+    Serial.print("[ESPNOW OTA RESULT] id=");
+    Serial.print(commandId);
+    Serial.print(" type=");
+    Serial.print(install ? "ota_update" : "ota_check");
+    Serial.print(" ok=");
+    Serial.print(ok ? "true" : "false");
+    Serial.print(" update_available=");
+    Serial.print(updateAvailable ? "yes" : "no");
+    if (latestVersion.length() > 0)
+    {
+        Serial.print(" latest=");
+        Serial.print(latestVersion);
+    }
+    Serial.print(" message=");
+    Serial.println(message);
+
+    if (install && ok)
+    {
+        Serial.println("[ESPNOW OTA] Update installed; rebooting device.");
+        delay(150);
+        ESP.restart();
+    }
+}
+
+bool triggerEspNowOta(const bool install, const String &targetDeviceId, String &commandId, String &error)
+{
+    if (!espNowDiscoveryBridge.ready())
+    {
+        error = "ESPNOW bridge is not ready";
+        return false;
+    }
+
+    return espNowDiscoveryBridge.sendOtaCommand(install, targetDeviceId, commandId, error, 2);
+}
+
 void maintainMdns()
 {
     if (wifiManager.isConnected())
@@ -1426,6 +1483,7 @@ void setup()
     webContext.resetTemperatureCalibration = resetTemperatureCalibration;
     webContext.setTemperatureTrimOffsetC = setTemperatureTrimOffsetC;
     webContext.setUnifiedServer = configureUnifiedServer;
+    webContext.triggerEspNowOta = triggerEspNowOta;
     webControlServer.configure(webContext);
 
     if (debugLogging)
@@ -1471,6 +1529,9 @@ void setup()
     espNowConfig.wifiConnectedProvider = getDiscoveryWifiConnected;
     espNowConfig.wifiRssiProvider = getDiscoveryWifiRssi;
     espNowConfig.peerPayloadReceived = handleEspNowPeerPayload;
+    espNowConfig.otaCheckHandler = handleEspNowOtaCheck;
+    espNowConfig.otaUpdateHandler = handleEspNowOtaUpdate;
+    espNowConfig.otaResultReceived = handleEspNowOtaResult;
     espNowDiscoveryBridge.begin(espNowConfig);
 
     unifiedServerClient.begin(getUnifiedRegistrationJson, getUnifiedStateJson, handleUnifiedCommand,

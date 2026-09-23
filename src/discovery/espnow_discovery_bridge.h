@@ -20,6 +20,10 @@ struct EspNowDiscoveryBridgeConfig
     bool (*wifiConnectedProvider)();
     int (*wifiRssiProvider)();
     void (*peerPayloadReceived)(const String &payload) = nullptr;
+    bool (*otaCheckHandler)(String &latestVersion, bool &updateAvailable, String &message) = nullptr;
+    bool (*otaUpdateHandler)(String &message) = nullptr;
+    void (*otaResultReceived)(const String &commandId, bool install, bool ok, bool updateAvailable,
+                              const String &latestVersion, const String &message) = nullptr;
 };
 
 class EspNowDiscoveryBridge
@@ -29,6 +33,8 @@ public:
     void loop();
     void advertiseNow();
     bool ready() const;
+    bool sendOtaCommand(bool install, const String &targetDeviceId, String &commandId, String &error,
+                        uint8_t maxHops = 2);
 
 private:
     static void onDataRecv(const uint8_t *macAddr, const uint8_t *data, int len);
@@ -36,6 +42,15 @@ private:
     bool initTransport();
     String buildPayload() const;
     bool sendPayload(const String &payload);
+    bool sendFrame(uint8_t type, const String &payload);
+    void handleCommandFrame(const String &payload, uint8_t hopCount, uint8_t maxHops);
+    void handleResultFrame(const String &payload);
+    bool seenMessageId(const String &messageId);
+    void recordMessageId(const String &messageId);
+
+    static constexpr size_t SEEN_MESSAGE_CAPACITY = 8;
+    String seenMessageIds[SEEN_MESSAGE_CAPACITY];
+    uint8_t seenMessageWriteIndex = 0;
 
     EspNowDiscoveryBridgeConfig config = {};
     bool configured = false;

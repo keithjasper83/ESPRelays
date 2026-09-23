@@ -36,6 +36,7 @@ using TemperatureCaptureSetter = bool (*)(float knownTempC, String &error);
 using TemperatureCalibrationAction = bool (*)(String &error);
 using TemperatureTrimSetter = bool (*)(float offsetC, String &error);
 using UnifiedServerSetter = bool (*)(const String &serverUrl, String &error);
+using EspNowOtaTrigger = bool (*)(bool install, const String &targetDeviceId, String &commandId, String &error);
 
 struct WebControlContext
 {
@@ -81,6 +82,7 @@ struct WebControlContext
     TemperatureCalibrationAction resetTemperatureCalibration = nullptr;
     TemperatureTrimSetter setTemperatureTrimOffsetC = nullptr;
     UnifiedServerSetter setUnifiedServer = nullptr;
+    EspNowOtaTrigger triggerEspNowOta = nullptr;
 };
 
 class WebControlServer

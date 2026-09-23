@@ -16,6 +16,8 @@ namespace
     constexpr uint8_t FRAME_MAGIC_1 = 'J';
     constexpr uint8_t FRAME_VERSION = 1;
     constexpr uint8_t FRAME_TYPE_DISCOVERY = 1;
+    constexpr uint8_t FRAME_TYPE_OTA_COMMAND = 2;
+    constexpr uint8_t FRAME_TYPE_OTA_RESULT = 3;
     constexpr size_t FRAME_HEADER_SIZE = 8;
     constexpr size_t FRAME_MAX_PAYLOAD = ESP_NOW_MAX_DATA_LEN - FRAME_HEADER_SIZE;
 
@@ -117,6 +119,41 @@ bool EspNowDiscoveryBridge::ready() const
     return transportReady;
 }
 
+bool EspNowDiscoveryBridge::sendOtaCommand(bool install, const String &targetDeviceId, String &commandId,
+                                           String &error, uint8_t maxHops)
+{
+    if (!transportReady)
+    {
+        error = "ESPNOW bridge is not ready";
+        return false;
+    }
+
+    const String sourceDeviceId = config.deviceIdProvider != nullptr ? config.deviceIdProvider() : String("esp32-unknown");
+    commandId = sourceDeviceId + "-" + String(millis()) + "-" + String(sequence);
+
+    JsonDocument command;
+    command["p"] = "kj-esp-control";
+    command["v"] = 1;
+    command["mid"] = commandId;
+    command["src"] = sourceDeviceId;
+    command["target"] = targetDeviceId.length() > 0 ? targetDeviceId : String("all");
+    command["cmd"] = install ? "ota_update" : "ota_check";
+    command["hop"] = 0;
+    command["max_hops"] = maxHops;
+
+    String payload;
+    serializeJson(command, payload);
+
+    if (!sendFrame(FRAME_TYPE_OTA_COMMAND, payload))
+    {
+        error = "Failed to broadcast OTA command";
+        return false;
+    }
+
+    recordMessageId(commandId);
+    return true;
+}
+
 String EspNowDiscoveryBridge::buildPayload() const
 {
     const String deviceId = config.deviceIdProvider != nullptr ? config.deviceIdProvider() : String("esp32-unknown");
@@ -148,6 +185,11 @@ String EspNowDiscoveryBridge::buildPayload() const
 
 bool EspNowDiscoveryBridge::sendPayload(const String &payload)
 {
+    return sendFrame(FRAME_TYPE_DISCOVERY, payload);
+}
+
+bool EspNowDiscoveryBridge::sendFrame(const uint8_t type, const String &payload)
+{
     if (payload.length() > FRAME_MAX_PAYLOAD)
     {
         Serial.print("[ESPNOW] payload too large; skipped bytes=");
@@ -159,7 +201,7 @@ bool EspNowDiscoveryBridge::sendPayload(const String &payload)
     frame.magic0 = FRAME_MAGIC_0;
     frame.magic1 = FRAME_MAGIC_1;
     frame.version = FRAME_VERSION;
-    frame.type = FRAME_TYPE_DISCOVERY;
+    frame.type = type;
     frame.sequence = sequence++;
     frame.payloadLength = static_cast<uint16_t>(payload.length());
     memcpy(frame.payload, payload.c_str(), payload.length());
@@ -186,7 +228,7 @@ void EspNowDiscoveryBridge::onDataRecv(const uint8_t *macAddr, const uint8_t *da
 
     const EspNowFrame *frame = reinterpret_cast<const EspNowFrame *>(data);
     if (frame->magic0 != FRAME_MAGIC_0 || frame->magic1 != FRAME_MAGIC_1 ||
-        frame->version != FRAME_VERSION || frame->type != FRAME_TYPE_DISCOVERY)
+        frame->version != FRAME_VERSION)
     {
         return;
     }
@@ -206,10 +248,140 @@ void EspNowDiscoveryBridge::onDataRecv(const uint8_t *macAddr, const uint8_t *da
     payload.reserve(frame->payloadLength + 1);
     payload.concat(reinterpret_cast<const char *>(frame->payload), frame->payloadLength);
 
-    if (instance->config.peerPayloadReceived != nullptr)
+    if (frame->type == FRAME_TYPE_DISCOVERY)
     {
-        instance->config.peerPayloadReceived(payload);
+        if (instance->config.peerPayloadReceived != nullptr)
+        {
+            instance->config.peerPayloadReceived(payload);
+        }
+        return;
     }
+
+    if (frame->type == FRAME_TYPE_OTA_COMMAND)
+    {
+        JsonDocument command;
+        if (deserializeJson(command, payload))
+        {
+            return;
+        }
+
+        const uint8_t hopCount = static_cast<uint8_t>(command["hop"] | 0);
+        const uint8_t maxHops = static_cast<uint8_t>(command["max_hops"] | 0);
+        instance->handleCommandFrame(payload, hopCount, maxHops);
+        return;
+    }
+
+    if (frame->type == FRAME_TYPE_OTA_RESULT)
+    {
+        instance->handleResultFrame(payload);
+    }
+}
+
+void EspNowDiscoveryBridge::handleCommandFrame(const String &payload, const uint8_t hopCount, const uint8_t maxHops)
+{
+    JsonDocument command;
+    if (deserializeJson(command, payload))
+    {
+        return;
+    }
+
+    const String messageId = command["mid"] | "";
+    if (messageId.length() == 0 || seenMessageId(messageId))
+    {
+        return;
+    }
+    recordMessageId(messageId);
+
+    const String commandType = command["cmd"] | "";
+    const String target = command["target"] | "all";
+    const String localDeviceId = config.deviceIdProvider != nullptr ? config.deviceIdProvider() : String("esp32-unknown");
+    const bool targetMatches = target == "all" || target == localDeviceId;
+
+    if (targetMatches)
+    {
+        bool ok = false;
+        bool updateAvailable = false;
+        String latestVersion;
+        String message = "handler unavailable";
+
+        if (commandType == "ota_check" && config.otaCheckHandler != nullptr)
+        {
+            ok = config.otaCheckHandler(latestVersion, updateAvailable, message);
+        }
+        else if (commandType == "ota_update" && config.otaUpdateHandler != nullptr)
+        {
+            ok = config.otaUpdateHandler(message);
+        }
+        else
+        {
+            message = "unsupported OTA command";
+        }
+
+        JsonDocument result;
+        result["p"] = "kj-esp-control";
+        result["v"] = 1;
+        result["mid"] = messageId;
+        result["src"] = localDeviceId;
+        result["cmd"] = commandType;
+        result["ok"] = ok;
+        result["ua"] = updateAvailable;
+        result["lv"] = latestVersion;
+        result["msg"] = message;
+
+        String resultPayload;
+        serializeJson(result, resultPayload);
+        sendFrame(FRAME_TYPE_OTA_RESULT, resultPayload);
+    }
+
+    if (hopCount < maxHops)
+    {
+        command["hop"] = static_cast<uint8_t>(hopCount + 1);
+        String forwardedPayload;
+        serializeJson(command, forwardedPayload);
+        sendFrame(FRAME_TYPE_OTA_COMMAND, forwardedPayload);
+    }
+}
+
+void EspNowDiscoveryBridge::handleResultFrame(const String &payload)
+{
+    if (config.otaResultReceived == nullptr)
+    {
+        return;
+    }
+
+    JsonDocument result;
+    if (deserializeJson(result, payload))
+    {
+        return;
+    }
+
+    const String messageId = result["mid"] | "";
+    const String commandType = result["cmd"] | "";
+    const bool install = commandType == "ota_update";
+    const bool ok = result["ok"] | false;
+    const bool updateAvailable = result["ua"] | false;
+    const String latestVersion = result["lv"] | "";
+    const String message = result["msg"] | "";
+
+    config.otaResultReceived(messageId, install, ok, updateAvailable, latestVersion, message);
+}
+
+bool EspNowDiscoveryBridge::seenMessageId(const String &messageId)
+{
+    for (size_t i = 0; i < SEEN_MESSAGE_CAPACITY; i++)
+    {
+        if (seenMessageIds[i] == messageId)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void EspNowDiscoveryBridge::recordMessageId(const String &messageId)
+{
+    seenMessageIds[seenMessageWriteIndex] = messageId;
+    seenMessageWriteIndex = static_cast<uint8_t>((seenMessageWriteIndex + 1) % SEEN_MESSAGE_CAPACITY);
 }
 
 void EspNowDiscoveryBridge::onDataSent(const uint8_t *macAddr, esp_now_send_status_t status)
