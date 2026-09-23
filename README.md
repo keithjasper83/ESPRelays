@@ -93,6 +93,32 @@ The 4.2.0 development firmware removes MQTT/Matterbridge and disconnected LED
 controls. Direct HTTP control and Unified Server WebSocket communication remain.
 See [migration and measured storage](docs/FIRMWARE_CLEANUP.md) before upgrading.
 
+## Self-hosted CI runner bootstrap
+
+Runner bootstrap scripts and the autoplaybook are now maintained in the public
+dependency repository [keithjasper83/GitHub-Runner](https://github.com/keithjasper83/GitHub-Runner),
+included here as a git submodule at `tooling/github-runner`.
+
+Quick start examples:
+
+```bash
+tooling/github-runner/scripts/bootstrap_runner.sh register --repo keithjasper83/ESPRelays --service
+```
+
+```powershell
+.\tooling\github-runner\scripts\bootstrap_runner.ps1 -Action register -Repo keithjasper83/ESPRelays -RunAsService
+```
+
+CI runner selection is controlled by repository variable `CI_RUNNER` in
+`.github/workflows/ci.yml`:
+
+- Leave unset to use GitHub-hosted `ubuntu-latest`.
+- Set to a JSON array for self-hosted labels, for example:
+
+```text
+["self-hosted","linux","x64"]
+```
+
 ## Ideal Use Cases
 
 - Smart home relay control with local fallback behavior.
