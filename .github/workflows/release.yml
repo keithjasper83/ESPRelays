@@ -26,7 +26,10 @@ concurrency:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    # Local runner by default. Optional override via repository variable RELEASE_RUNNER.
+    # Example:
+    #   ["self-hosted","linux","x64"]
+    runs-on: ${{ vars.RELEASE_RUNNER && fromJSON(vars.RELEASE_RUNNER) || 'self-hosted' }}
 
     steps:
       - name: Checkout
