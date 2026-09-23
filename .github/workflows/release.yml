@@ -169,7 +169,12 @@ jobs:
         run: pio run
 
       - name: Run host tests
+        if: runner.os == 'Linux'
         run: pio test -vvv -e native
+
+      - name: Skip host tests on non-Linux runners
+        if: runner.os != 'Linux'
+        run: echo "Skipping native host tests on ${RUNNER_OS}; gcov linking is Linux-only in this workflow."
 
       - name: Setup Node for embedded console tests
         uses: actions/setup-node@v4
@@ -180,6 +185,7 @@ jobs:
         run: node --test test/web/*.test.cjs
 
       - name: Enforce coverage gate
+        if: runner.os == 'Linux'
         run: |
           gcovr \
             --root . \
@@ -190,6 +196,10 @@ jobs:
             --output coverage.xml \
             --html-details coverage.html \
             --fail-under-line 90
+
+      - name: Skip coverage gate on non-Linux runners
+        if: runner.os != 'Linux'
+        run: echo "Skipping coverage gate on ${RUNNER_OS}; native gcov coverage is Linux-only in this workflow."
 
       - name: Verify release identity
         run: |
