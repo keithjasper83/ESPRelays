@@ -26,6 +26,7 @@
 #include "RelayController.h"
 #include "ResetDiagnostics.h"
 #include "ScheduleManager.h"
+#include "StatusStrip.h"
 #include "TimeSyncManager.h"
 #include "TemperatureProbeManager.h"
 #include "TemperatureCalibrationRecord.h"
@@ -50,6 +51,7 @@ ScheduleManager scheduleManager;
 OtaUpdateManager otaUpdateManager;
 TemperatureProbeManager temperatureProbeManager;
 UnifiedServerClient unifiedServerClient;
+StatusStrip statusStrip(STATUS_STRIP_PIN, STATUS_STRIP_COUNT, STATUS_STRIP_BRIGHTNESS);
 
 unsigned long lastHeartbeat = 0;
 unsigned long lastTimestampLog = 0;
@@ -742,16 +744,14 @@ String getUnifiedRegistrationJson()
 
 bool handleUnifiedCommand(bool desiredOn, String &error)
 {
-    (void)error;
-    if (desiredOn)
+    relayController.set(desiredOn, RelayController::CommandSource::Reflected);
+    if (relayController.isOn() != desiredOn)
     {
-        relayController.set(true);
+        error = "Rejected as a stale echo of a recent local change";
+        unifiedServerClient.publishState();
+        return false;
     }
-    else
-    {
-        relayController.set(false);
-    }
-    return relayController.isOn() == desiredOn;
+    return true;
 }
 
 String getUnifiedSettingsJson()
@@ -1430,6 +1430,8 @@ void setup()
 
     relayController.begin(shouldForceRelayOff(bootResetReason));
     relayController.setStateChangedCallback(onRelayStateChanged);
+    statusStrip.begin();
+    statusStrip.update(relayController.isOn(), wifiManager.status(), otaUpdateManager.updateAvailable(), false);
 
     commandContext.relay = &relayController;
     commandContext.wifi = &wifiManager;
@@ -1572,5 +1574,7 @@ void loop()
         espNowDiscoveryBridge.advertiseNow();
     }
 
+    statusStrip.update(relayController.isOn(), wifiManager.status(), otaUpdateManager.updateAvailable(),
+                       false);
     lastDiscoveryWifiConnected = wifiManager.isConnected();
 }

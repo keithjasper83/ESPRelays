@@ -89,7 +89,7 @@ namespace
 void RelayController::begin(bool) {}
 void RelayController::maintain(unsigned long) {}
 bool RelayController::isOn() const { return gRelayState; }
-void RelayController::set(bool on)
+void RelayController::set(bool on, CommandSource)
 {
     gRelayState = on;
     gRelaySetCalls++;

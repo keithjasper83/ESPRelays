@@ -21,6 +21,9 @@ namespace
     constexpr char RELAY_PREF_AUTO_OFF_DEADLINE_EPOCH[] = "auto_off_epoch";
     constexpr char RELAY_PREF_AUTO_OFF_REMAINING_MS[] = "auto_off_rem";
     constexpr uint32_t AUTO_OFF_MAX_MINUTES = 7U * 24U * 60U;
+    // A reflected command that contradicts a deliberate change made within this
+    // window is a stale echo from an external integration, never a user action.
+    constexpr unsigned long REFLECTED_ECHO_SUPPRESS_MS = 10000UL;
 }
 
 void RelayController::loadPersistedState()
@@ -129,8 +132,9 @@ void RelayController::persistState()
 
 void RelayController::begin(const bool forceOff)
 {
-    pinMode(RELAY_PIN, OUTPUT);
     loadPersistedState();
+    pinMode(RELAY_PIN, OUTPUT);
+
     bootFailsafeAppliedValue = forceOff && relayOn;
     if (forceOff)
     {
@@ -138,6 +142,7 @@ void RelayController::begin(const bool forceOff)
         clearAutoOffTimer();
         persistState();
     }
+
     applyOutput();
 }
 
@@ -264,8 +269,17 @@ void RelayController::applyOutput() const
     digitalWrite(RELAY_PIN, relayLevel ? HIGH : LOW);
 }
 
-void RelayController::set(bool on)
+void RelayController::set(bool on, CommandSource source)
 {
+    if (source == CommandSource::Reflected && on != relayOn && hasExplicitChange &&
+        (millis() - lastExplicitChangeMs) < REFLECTED_ECHO_SUPPRESS_MS)
+    {
+        Serial.print("[RELAY] Ignored reflected ");
+        Serial.print(on ? "ON" : "OFF");
+        Serial.println(" command; it contradicts a deliberate change made moments ago.");
+        return;
+    }
+
     if (relayOn == on)
     {
         if (on && relayAutoOffMinutesValue > 0)
@@ -277,6 +291,12 @@ void RelayController::set(bool on)
     }
 
     relayOn = on;
+    lastExplicitChangeMs = millis();
+    hasExplicitChange = source == CommandSource::Explicit;
+
+    Serial.print("[RELAY] Switching ");
+    Serial.print(relayOn ? "ON" : "OFF");
+    Serial.println(source == CommandSource::Explicit ? " (explicit command)." : " (reflected command).");
 
     if (relayOn)
     {

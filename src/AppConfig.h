@@ -26,6 +26,12 @@ constexpr uint8_t DEBUG_JUMPER_PIN = 4;
 constexpr uint8_t RELAY_PIN = 5;
 constexpr bool RELAY_ACTIVE_LOW = false;
 
+// GPIO6 is free on the ESP32-C3-DevKitM-1 and is suitable for a WS2812/NeoPixel
+// status LED strip; keep GPIO9 reserved for the factory-reset BOOT button.
+constexpr uint8_t STATUS_STRIP_PIN = 6;
+constexpr uint8_t STATUS_STRIP_COUNT = 5;
+constexpr uint8_t STATUS_STRIP_BRIGHTNESS = 64;
+
 constexpr uint8_t RELAY_BUTTON_PIN = 3;
 constexpr uint8_t RESET_BUTTON_PIN = 10;
 // GPIO9 is the ESP32-C3 board's BOOT button. Hold it while the firmware is

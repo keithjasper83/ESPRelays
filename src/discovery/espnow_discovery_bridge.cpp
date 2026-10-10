@@ -217,9 +217,9 @@ bool EspNowDiscoveryBridge::sendFrame(const uint8_t type, const String &payload)
     return true;
 }
 
-void EspNowDiscoveryBridge::onDataRecv(const uint8_t *macAddr, const uint8_t *data, int len)
+void EspNowDiscoveryBridge::onDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *data, int len)
 {
-    (void)macAddr;
+    (void)recvInfo;
 
     if (instance == nullptr || data == nullptr || len < static_cast<int>(FRAME_HEADER_SIZE))
     {
@@ -384,8 +384,8 @@ void EspNowDiscoveryBridge::recordMessageId(const String &messageId)
     seenMessageWriteIndex = static_cast<uint8_t>((seenMessageWriteIndex + 1) % SEEN_MESSAGE_CAPACITY);
 }
 
-void EspNowDiscoveryBridge::onDataSent(const uint8_t *macAddr, esp_now_send_status_t status)
+void EspNowDiscoveryBridge::onDataSent(const wifi_tx_info_t *txInfo, esp_now_send_status_t status)
 {
-    (void)macAddr;
+    (void)txInfo;
     (void)status;
 }
