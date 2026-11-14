@@ -1,5 +1,10 @@
 # Changelog
 
+## v4.2.5 - 2026-11-14
+
+- fix(firmware): restore relay builds on Alfred (f78d7ca)
+- Track relay command source and stale echoes (e997c85)
+
 ## v4.2.4 - 2026-09-23
 
 Add OTA command routing over ESP-NOW with relay support.
