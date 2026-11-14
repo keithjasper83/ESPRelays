@@ -26,10 +26,7 @@ concurrency:
 
 jobs:
   release:
-    # Local runner by default. Optional override via repository variable RELEASE_RUNNER.
-    # Example:
-    #   ["self-hosted","linux","x64"]
-    runs-on: ${{ vars.RELEASE_RUNNER && fromJSON(vars.RELEASE_RUNNER) || 'self-hosted' }}
+    runs-on: [self-hosted, Linux, X64, alfred-relay]
 
     steps:
       - name: Checkout

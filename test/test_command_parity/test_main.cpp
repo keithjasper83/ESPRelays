@@ -228,6 +228,22 @@ void test_device_commands_dispatch_and_aliases_work()
     TEST_ASSERT_EQUAL(1, gTempHighCaptureCalls);
 }
 
+void test_missing_optional_handlers_do_not_execute_or_restart()
+{
+    CommandRouter router;
+    DeviceCommandContext context{};
+    DeviceCommands::begin(router, context);
+    TEST_ASSERT_TRUE(router.dispatch("ota-check"));
+    TEST_ASSERT_TRUE(router.dispatch("ota-update"));
+    TEST_ASSERT_TRUE(router.dispatch("reboot"));
+    TEST_ASSERT_TRUE(router.dispatch("temp-capture-low"));
+    TEST_ASSERT_TRUE(router.dispatch("temp-capture-high"));
+    TEST_ASSERT_EQUAL(0, gOtaCheckCalls);
+    TEST_ASSERT_EQUAL(0, gOtaUpdateCalls);
+    TEST_ASSERT_EQUAL(0, gRebootCalls);
+    TEST_ASSERT_FALSE(ESP.restarted);
+}
+
 void test_ota_update_success_restarts_device()
 {
     CommandRouter router;
@@ -283,6 +299,7 @@ int main(int argc, char **argv)
 
     UNITY_BEGIN();
     RUN_TEST(test_device_commands_dispatch_and_aliases_work);
+    RUN_TEST(test_missing_optional_handlers_do_not_execute_or_restart);
     RUN_TEST(test_ota_update_success_restarts_device);
     RUN_TEST(test_web_routes_and_unified_path_preserve_router_commands);
     return UNITY_END();

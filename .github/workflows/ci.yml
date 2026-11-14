@@ -11,12 +11,9 @@ permissions:
 
 jobs:
   build-and-test:
-    # Self-hosted by default. Optional override via repository variable CI_RUNNER.
-    # Examples:
-    #   ["self-hosted","linux"]
-    #   ["self-hosted","macOS"]
-    # Leave CI_RUNNER unset to use generic self-hosted.
-    runs-on: ${{ vars.CI_RUNNER && fromJSON(vars.CI_RUNNER) || 'self-hosted' }}
+    # Forked pull requests must not run untrusted code on Alfred.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, Linux, X64, alfred-relay]
 
     steps:
       - name: Checkout

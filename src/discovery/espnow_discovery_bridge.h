@@ -37,8 +37,8 @@ public:
                         uint8_t maxHops = 2);
 
 private:
-    static void onDataRecv(const esp_now_recv_info_t *recvInfo, const uint8_t *data, int len);
-    static void onDataSent(const wifi_tx_info_t *txInfo, esp_now_send_status_t status);
+    static void onDataRecv(const uint8_t *macAddr, const uint8_t *data, int len);
+    static void onDataSent(const uint8_t *macAddr, esp_now_send_status_t status);
     bool initTransport();
     String buildPayload() const;
     bool sendPayload(const String &payload);
